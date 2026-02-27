@@ -9,49 +9,29 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PYTHONPATH: scripts:scripts/amlsim
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Maven
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y maven
-
       - name: Install Python test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest Faker numpy networkx python-dateutil
-
-      - name: Build and install MASON v20 locally
-        run: |
-          git clone --depth 1 --branch v20 https://github.com/eclab/mason /tmp/mason
-          mvn -q -f /tmp/mason/pom.xml -pl mason -DskipTests package
-          mvn -q install:install-file \
-            -Dfile=/tmp/mason/mason/target/mason-20.jar \
-            -DgroupId=mason \
-            -DartifactId=mason \
-            -Dversion=20 \
-            -Dpackaging=jar \
-            -DgeneratePom=true
-
-      - name: Run Java tests
-        run: mvn test
+          pip install pytest Faker numpy networkx python-dateutil powerlaw
 
       - name: Run Python tests
-        env:
-          PYTHONPATH: scripts:scripts/amlsim
         run: pytest -q
+
+      - name: Run Python Simulation Smoke
+        run: |
+          python3 scripts/transaction_graph_generator.py conf.json
+          sh scripts/build_AMLSim.sh
+          sh scripts/run_AMLSim.sh conf.json
+          python3 scripts/convert_logs.py conf.json

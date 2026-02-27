@@ -4,7 +4,7 @@ AMLSim is a multi-agent anti-money-laundering simulator that generates synthetic
 
 The project combines:
 - Python preprocessing for graph and parameter generation
-- Java simulation for time-stepped transaction execution
+- Python simulation for time-stepped transaction execution
 - Python post-processing for export and analysis
 
 ## Why AMLSim
@@ -17,9 +17,6 @@ The project combines:
 ## Requirements
 
 - macOS or Linux
-- Java: JDK 17 recommended
-  - Project bytecode target is Java 8, but JDK 17 is the most reliable runtime for current test/tooling dependencies.
-- Maven 3.8+
 - Python 3.10+
 - Python dependencies from `requirements.txt`
 
@@ -27,23 +24,6 @@ Install Python dependencies:
 
 ```bash
 pip3 install -r requirements.txt
-```
-
-### MASON dependency (required)
-
-`mason:mason:20` is not fetched automatically from Maven Central. You must install it in your local Maven repository.
-
-1. Download/build `mason.20.jar` and place it in `jars/`.
-2. Install it locally:
-
-```bash
-mvn install:install-file \
-  -Dfile=jars/mason.20.jar \
-  -DgroupId=mason \
-  -DartifactId=mason \
-  -Dversion=20 \
-  -Dpackaging=jar \
-  -DgeneratePom=true
 ```
 
 ## Quick Start
@@ -93,12 +73,6 @@ For production-scale runs, copy one of the templates under `paramFiles/` and upd
 
 ## Testing
 
-Run Java tests:
-
-```bash
-mvn test
-```
-
 Run Python tests:
 
 ```bash
@@ -121,10 +95,9 @@ Details: `docs/performance/smoke-benchmark.md`
 
 ## Project Layout
 
-- `src/main/java/`: Java simulator core
 - `scripts/`: Python data generation and processing scripts
 - `paramFiles/`: parameter presets
-- `tests/`: Python and Java test suites
+- `tests/`: Python test suite
 - `docs/`: project documentation
 - `outputs/`, `tmp/`: generated artifacts
 

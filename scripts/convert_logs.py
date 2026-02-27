@@ -6,7 +6,8 @@ import shutil
 import datetime
 from dateutil.parser import parse
 from random import random
-from collections import defaultdict, Counter
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 from amlsim.account_data_type_lookup import AccountDataTypeLookup
 from faker import Faker
@@ -387,7 +388,15 @@ class Schema:
         return dt.isoformat() + "Z"  # UTC
 
 
-    def get_tx_row(self, _tx_id, _timestamp, _amount, _tx_type, _orig, _dest, _is_sar, _alert_id, **attr):
+    @staticmethod
+    def _apply_input_mappings(row, input_row, input_mappings):
+        if input_row is None or input_mappings is None:
+            return
+        for src_idx, dst_idx in input_mappings:
+            row[dst_idx] = input_row[src_idx]
+
+    def get_tx_row(self, _tx_id, _timestamp, _amount, _tx_type, _orig, _dest, _is_sar, _alert_id,
+                   input_row=None, input_mappings=None, **attr):
         row = list(self.tx_defaults)
         row[self.tx_id_idx] = _tx_id
         row[self.tx_time_idx] = _timestamp
@@ -398,10 +407,13 @@ class Schema:
         row[self.tx_sar_idx] = _is_sar
         row[self.tx_alert_idx] = _alert_id
 
-        for name, value in attr.items():
-            if name in self.tx_name2idx:
-                idx = self.tx_name2idx[name]
-                row[idx] = value
+        if input_mappings is not None:
+            self._apply_input_mappings(row, input_row, input_mappings)
+        else:
+            for name, value in attr.items():
+                if name in self.tx_name2idx:
+                    idx = self.tx_name2idx[name]
+                    row[idx] = value
 
         for idx, v_type in enumerate(self.tx_types):
             if v_type == "date":
@@ -409,7 +421,7 @@ class Schema:
         return row
 
     def get_alert_acct_row(self, _alert_id, _reason, _acct_id, _acct_name, _is_sar,
-                           _model_id, _schedule_id, _bank_id, **attr):
+                           _model_id, _schedule_id, _bank_id, input_row=None, input_mappings=None, **attr):
         row = list(self.alert_acct_defaults)
         row[self.alert_acct_alert_idx] = _alert_id
         row[self.alert_acct_reason_idx] = _reason
@@ -420,10 +432,13 @@ class Schema:
         row[self.alert_acct_schedule_idx] = _schedule_id
         row[self.alert_acct_bank_idx] = _bank_id
 
-        for name, value in attr.items():
-            if name in self.alert_acct_name2idx:
-                idx = self.alert_acct_name2idx[name]
-                row[idx] = value
+        if input_mappings is not None:
+            self._apply_input_mappings(row, input_row, input_mappings)
+        else:
+            for name, value in attr.items():
+                if name in self.alert_acct_name2idx:
+                    idx = self.alert_acct_name2idx[name]
+                    row[idx] = value
 
         for idx, v_type in enumerate(self.alert_acct_types):
             if v_type == "date":
@@ -431,7 +446,7 @@ class Schema:
         return row
 
     def get_alert_tx_row(self, _alert_id, _alert_type, _is_sar, _tx_id, _orig, _dest,
-                         _tx_type, _amount, _timestamp, **attr):
+                         _tx_type, _amount, _timestamp, input_row=None, input_mappings=None, **attr):
         row = list(self.alert_tx_defaults)
         row[self.alert_tx_id_idx] = _alert_id
         row[self.alert_tx_type_idx] = _alert_type
@@ -443,10 +458,13 @@ class Schema:
         row[self.alert_tx_amount_idx] = _amount
         row[self.alert_tx_time_idx] = _timestamp
 
-        for name, value in attr.items():
-            if name in self.alert_tx_name2idx:
-                idx = self.alert_tx_name2idx[name]
-                row[idx] = value
+        if input_mappings is not None:
+            self._apply_input_mappings(row, input_row, input_mappings)
+        else:
+            for name, value in attr.items():
+                if name in self.alert_tx_name2idx:
+                    idx = self.alert_tx_name2idx[name]
+                    row[idx] = value
 
         for idx, v_type in enumerate(self.alert_tx_types):
             if v_type == "date":
@@ -576,262 +594,264 @@ class LogConverter:
     def convert_acct_tx(self):
         print("Convert transaction list from %s to %s, %s and %s" % (
             self.log_file, self.tx_file, self.cash_tx_file, self.alert_tx_file))
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(self._convert_accounts),
+                executor.submit(self._convert_transactions),
+            ]
+            for future in futures:
+                future.result()
 
-        in_acct_f = open(os.path.join(self.input_dir, self.in_acct_file), "r")  # Input account file
-        in_tx_f = open(self.log_file, "r")  # Transaction log file from the Java simulator
+    @staticmethod
+    def _build_input_mappings(indices, output_name2idx):
+        return [(index, output_name2idx[name]) for name, index in indices.items() if name in output_name2idx]
 
-        out_acct_f = open(os.path.join(self.work_dir, self.out_acct_file), "w")  # Output account file
-        out_tx_f = open(os.path.join(self.work_dir, self.tx_file), "w")  # Output transaction file
-        out_cash_tx_f = open(os.path.join(self.work_dir, self.cash_tx_file), "w")  # Output cash transaction file
-        out_alert_tx_f = open(os.path.join(self.work_dir, self.alert_tx_file), "w")  # Output alert transaction file
+    @staticmethod
+    def _compose_tx_key(orig_id, dest_id, ttype, amount, date_str):
+        return "|".join((orig_id, dest_id, ttype, amount, date_str))
 
-        out_ind_f = open(os.path.join(self.work_dir, self.party_individual_file), "w")  # Party individuals
-        out_org_f = open(os.path.join(self.work_dir, self.party_organization_file), "w")  # Party organizations
-        out_map_f = open(os.path.join(self.work_dir, self.account_mapping_file), "w")  # Account mappings
-        out_ent_f = open(os.path.join(self.work_dir, self.resolved_entities_file), "w")  # Resolved entities
-
-        # Load account list
-        reader = csv.reader(in_acct_f)
-        acct_writer = csv.writer(out_acct_f)
-        acct_writer.writerow(self.schema.acct_names)  # write header
-
-        ind_writer = csv.writer(out_ind_f)
-        ind_writer.writerow(self.schema.party_ind_names)
-        org_writer = csv.writer(out_org_f)
-        org_writer.writerow(self.schema.party_org_names)
-        map_writer = csv.writer(out_map_f)
-        map_writer.writerow(self.schema.acct_party_names)
-        ent_writer = csv.writer(out_ent_f)
-        ent_writer.writerow(self.schema.party_party_names)
-
-        header = next(reader)
-
-        mapping_id = 1  # Mapping ID for account-alert list
-
+    def _build_account_field_plan(self, header_map):
         lookup = AccountDataTypeLookup()
-        us_gen = self.fake['en_US']
+        plan = []
+        for output_index, output_item in enumerate(self.schema.data["account"]):
+            output_type = output_item.get("dataType")
+            input_index = None
+            if output_type is not None:
+                input_type = lookup.inputType(output_type)
+                input_index = header_map.get(input_type)
+            plan.append((
+                output_index,
+                output_type,
+                input_index,
+                output_item.get("valueType") == "date",
+                output_item.get("name"),
+            ))
+        return plan
 
-        for row in reader:
-            output_row = list(self.schema.acct_defaults)
+    def _convert_accounts(self):
+        in_acct_path = os.path.join(self.input_dir, self.in_acct_file)
+        out_acct_path = os.path.join(self.work_dir, self.out_acct_file)
+        out_ind_path = os.path.join(self.work_dir, self.party_individual_file)
+        out_org_path = os.path.join(self.work_dir, self.party_organization_file)
+        out_map_path = os.path.join(self.work_dir, self.account_mapping_file)
+        out_ent_path = os.path.join(self.work_dir, self.resolved_entities_file)
 
-            acct_type = ""
-            acct_id = ""
+        us_gen = self.fake["en_US"] if self.fake is not None else Faker("en_US")
 
-            gender = np.random.choice(['Male', 'Female'], p=[0.5, 0.5])
+        with open(in_acct_path, "r", newline="") as in_acct_f, \
+                open(out_acct_path, "w", newline="") as out_acct_f, \
+                open(out_ind_path, "w", newline="") as out_ind_f, \
+                open(out_org_path, "w", newline="") as out_org_f, \
+                open(out_map_path, "w", newline="") as out_map_f, \
+                open(out_ent_path, "w", newline="") as out_ent_f:
+            reader = csv.reader(in_acct_f)
+            acct_writer = csv.writer(out_acct_f)
+            ind_writer = csv.writer(out_ind_f)
+            org_writer = csv.writer(out_org_f)
+            map_writer = csv.writer(out_map_f)
+            ent_writer = csv.writer(out_ent_f)
 
-            good_address = False
-            while good_address == False:
-                address = us_gen.address()
-                split1 = address.split('\n')
-                street_address = split1[0]
-                split2 = split1[1].split(', ')
-                if len(split2) == 2:
-                    good_address = True
-            
-            city = split2[0] 
-            split3 = split2[1].split(' ')
-            state = split3[0]
-            postcode = split3[1]
-            
+            acct_writer.writerow(self.schema.acct_names)
+            ind_writer.writerow(self.schema.party_ind_names)
+            org_writer.writerow(self.schema.party_org_names)
+            map_writer.writerow(self.schema.acct_party_names)
+            ent_writer.writerow(self.schema.party_party_names)
 
-            for output_index, output_item in enumerate(self.schema.data['account']):
-                if 'dataType' in output_item:
-                    output_type = output_item['dataType']
-                    input_type = lookup.inputType(output_type)
+            header = next(reader)
+            header_map = {name: index for index, name in enumerate(header)}
+            account_plan = self._build_account_field_plan(header_map)
 
-                    try:
-                        input_index = header.index(input_type)
-                    except ValueError:
+            mapping_id = 1
+            for row in reader:
+                output_row = list(self.schema.acct_defaults)
+                acct_type = ""
+                acct_id = ""
+
+                gender = np.random.choice(["Male", "Female"], p=[0.5, 0.5])
+
+                while True:
+                    address = us_gen.address()
+                    split1 = address.split("\n")
+                    if len(split1) < 2:
                         continue
+                    street_address = split1[0]
+                    split2 = split1[1].split(", ")
+                    if len(split2) == 2:
+                        break
 
-                    if output_type == "start_time":
-                        try:
-                            start = int(row[input_index])
-                            if start >= 0:
-                                output_row[output_index] = start
-                        except ValueError:  # If failed, keep the default value
-                            pass
+                city = split2[0]
+                split3 = split2[1].split(" ")
+                state = split3[0]
+                postcode = split3[1]
 
-                    elif output_type == "end_time":
-                        try:
-                            end = int(row[input_index])
-                            if end > 0:
-                                output_row[output_index] = end
-                        except ValueError:  # If failed, keep the default value
-                            pass
+                for output_index, output_type, input_index, is_date, field_name in account_plan:
+                    if output_type is not None and input_index is not None:
+                        value = row[input_index]
+                        if output_type == "start_time":
+                            try:
+                                start = int(value)
+                                if start >= 0:
+                                    output_row[output_index] = start
+                            except ValueError:
+                                pass
+                        elif output_type == "end_time":
+                            try:
+                                end = int(value)
+                                if end > 0:
+                                    output_row[output_index] = end
+                            except ValueError:
+                                pass
+                        elif output_type == "account_id":
+                            acct_id = value
+                            output_row[output_index] = acct_id
+                        elif output_type == "account_type":
+                            acct_type = value
+                            output_row[output_index] = acct_type
+                        else:
+                            output_row[output_index] = value
 
-                    elif output_type == "account_id":
-                        acct_id = row[input_index]
-                        output_row[output_index] = acct_id
-
-                    elif output_type == "account_type":
-                        acct_type = row[input_index]
-                        output_row[output_index] = acct_type
-        
-                    else:
-                        output_row[output_index] = row[input_index]
-
-                if 'valueType' in output_item:
-                    if output_item['valueType'] == 'date':
+                    if is_date:
                         output_row[output_index] = self.schema.days2date(output_row[output_index])
 
-                
-                if 'name' in output_item:
-                    if output_item['name'] == 'first_name':
+                    if field_name == "first_name":
                         output_row[output_index] = us_gen.first_name_male() if gender == "Male" else us_gen.first_name_female()
-                    
-                    elif output_item['name'] == 'last_name':
+                    elif field_name == "last_name":
                         output_row[output_index] = us_gen.last_name_male() if gender == "Male" else us_gen.last_name_female()
-
-                    elif output_item['name'] == 'street_addr':
+                    elif field_name == "street_addr":
                         output_row[output_index] = street_address
-
-                    elif output_item['name'] == 'city':
+                    elif field_name == "city":
                         output_row[output_index] = city
-
-                    elif output_item['name'] == 'state':
+                    elif field_name == "state":
                         output_row[output_index] = state
-
-                    elif output_item['name'] == 'country':
+                    elif field_name == "country":
                         output_row[output_index] = "US"
-
-                    elif output_item['name'] == 'zip':
+                    elif field_name == "zip":
                         output_row[output_index] = postcode
-
-                    elif output_item['name'] == 'gender':
+                    elif field_name == "gender":
                         output_row[output_index] = gender
-
-                    elif output_item['name'] == 'birth_date':
+                    elif field_name == "birth_date":
                         output_row[output_index] = us_gen.date_of_birth()
-
-                    elif output_item['name'] == 'ssn':
+                    elif field_name == "ssn":
                         output_row[output_index] = us_gen.ssn()
-
-                    elif output_item['name'] == 'lat':
+                    elif field_name == "lat":
                         output_row[output_index] = us_gen.latitude()
-                    
-                    elif output_item['name'] == 'lon':
+                    elif field_name == "lon":
                         output_row[output_index] = us_gen.longitude()
 
-           
+                acct_writer.writerow(output_row)
+                if acct_id:
+                    self.org_types[int(acct_id)] = acct_type
 
-            acct_writer.writerow(output_row)
-            self.org_types[int(acct_id)] = acct_type
+                is_individual = random() >= 0.5
+                party_id = str(acct_id)
+                if is_individual:
+                    ind_writer.writerow(self.schema.get_party_ind_row(party_id))
+                else:
+                    org_writer.writerow(self.schema.get_party_org_row(party_id))
 
-            # Write a party row per account
-            is_individual = random() >= 0.5  # 50%: individual, 50%: organization
-            party_id = str(acct_id)
-            if is_individual:  # Individual
-                output_row = self.schema.get_party_ind_row(party_id)
-                ind_writer.writerow(output_row)
-            else:
-                output_row = self.schema.get_party_org_row(party_id)
-                org_writer.writerow(output_row)
+                map_writer.writerow(self.schema.get_acct_party_row(mapping_id, acct_id, party_id))
+                mapping_id += 1
 
-            # Write account-party mapping row
-            output_row = self.schema.get_acct_party_row(mapping_id, acct_id, party_id)
-            map_writer.writerow(output_row)
-            mapping_id += 1
+    def _convert_transactions(self):
+        tx_log_path = self.log_file
+        out_tx_path = os.path.join(self.work_dir, self.tx_file)
+        out_cash_tx_path = os.path.join(self.work_dir, self.cash_tx_file)
+        out_alert_tx_path = os.path.join(self.work_dir, self.alert_tx_file)
 
-        in_acct_f.close()
-        out_ind_f.close()
-        out_org_f.close()
-        out_map_f.close()
-        out_ent_f.close()
+        # Keep only dedupe keys in memory; rows are streamed end-to-end.
+        tx_seen = set()
+        cash_tx_seen = set()
 
-        # Avoid duplicated transaction CSV rows in the log file
-        tx_set = set()
-        cash_tx_set = set()
-
-        # Load transaction log from the Java simulator
-        reader = csv.reader(in_tx_f)
-        tx_writer = csv.writer(out_tx_f)
-        cash_tx_writer = csv.writer(out_cash_tx_f)
-        alert_tx_writer = csv.writer(out_alert_tx_f)
-
-        header = next(reader)
-        indices = {name: index for index, name in enumerate(header)}
-        num_columns = len(header)
-
-        tx_header = self.schema.tx_names
-        alert_header = self.schema.alert_tx_names
-        tx_writer.writerow(tx_header)
-        cash_tx_writer.writerow(tx_header)
-        alert_tx_writer.writerow(alert_header)
-
-        step_idx = indices["step"]
-        amt_idx = indices["amount"]
-        orig_idx = indices["nameOrig"]
-        dest_idx = indices["nameDest"]
-        sar_idx = indices["isSAR"]
-        alert_idx = indices["alertID"]
-        type_idx = indices["type"]
-
-        tx_id = 1
-        for row in reader:
-            if len(row) < num_columns:
-                continue
-            try:
-                days = int(row[step_idx])
-                date_str = str(days)  # days_to_date(days)
-                amount = row[amt_idx]  # transaction amount
-                orig_id = row[orig_idx]  # originator ID
-                dest_id = row[dest_idx]  # beneficiary ID
-                sar_id = int(row[sar_idx])  # SAR transaction index
-                alert_id = int(row[alert_idx])  # Alert ID
-
-                is_sar = sar_id > 0
-                is_alert = alert_id >= 0
-                ttype = row[type_idx]
-            except ValueError:
-                continue
-
-            attr = {name: row[index] for name, index in indices.items()}
-            if ttype in CASH_TYPES:  # Cash transactions
-                cash_tx = (orig_id, dest_id, ttype, amount, date_str)
-                if cash_tx not in cash_tx_set:
-                    cash_tx_set.add(cash_tx)
-                    output_row = self.schema.get_tx_row(tx_id, date_str, amount, ttype, orig_id, dest_id,
-                                                        is_sar, alert_id, **attr)
-                    cash_tx_writer.writerow(output_row)
-            else:  # Account-to-account transactions including alert transactions
-                tx = (orig_id, dest_id, ttype, amount, date_str)
-                if tx not in tx_set:
-                    output_row = self.schema.get_tx_row(tx_id, date_str, amount, ttype, orig_id, dest_id,
-                                                        is_sar, alert_id, **attr)
-                    tx_writer.writerow(output_row)
-                    tx_set.add(tx)
-            if is_alert:  # Alert transactions
-                alert_type = self.reports.get(alert_id).get_reason()
-                alert_row = self.schema.get_alert_tx_row(alert_id, alert_type, is_sar, tx_id, orig_id, dest_id,
-                                                         ttype, amount, date_str, **attr)
-                alert_tx_writer.writerow(alert_row)
-
-            if tx_id % 1000000 == 0:
-                print("Converted %d transactions." % tx_id)
-            tx_id += 1
-
-        in_tx_f.close()
-        out_tx_f.close()
-        out_cash_tx_f.close()
-        out_alert_tx_f.close()
-
-        # Count degrees (fan-in/out patterns)
         deg_param = os.getenv("DEGREE")
-        if deg_param:
-            max_threshold = int(deg_param)
-            pred = defaultdict(set)  # Account, Predecessors
-            succ = defaultdict(set)  # Account, Successors
-            for orig, dest, _, _, _ in tx_set:
-                pred[dest].add(orig)
-                succ[orig].add(dest)
-            in_degrees = [len(nbs) for nbs in pred.values()]
-            out_degrees = [len(nbs) for nbs in succ.values()]
-            in_deg = Counter(in_degrees)
-            out_deg = Counter(out_degrees)
-            for th in range(2, max_threshold+1):
-                num_fan_in = sum([c for d, c in in_deg.items() if d >= th])
-                num_fan_out = sum([c for d, c in out_deg.items() if d >= th])
+        max_threshold = int(deg_param) if deg_param else None
+        pred = defaultdict(set) if max_threshold else None
+        succ = defaultdict(set) if max_threshold else None
+
+        with open(tx_log_path, "r", newline="") as in_tx_f, \
+                open(out_tx_path, "w", newline="") as out_tx_f, \
+                open(out_cash_tx_path, "w", newline="") as out_cash_tx_f, \
+                open(out_alert_tx_path, "w", newline="") as out_alert_tx_f:
+            reader = csv.reader(in_tx_f)
+            tx_writer = csv.writer(out_tx_f)
+            cash_tx_writer = csv.writer(out_cash_tx_f)
+            alert_tx_writer = csv.writer(out_alert_tx_f)
+
+            header = next(reader)
+            indices = {name: index for index, name in enumerate(header)}
+            num_columns = len(header)
+
+            tx_writer.writerow(self.schema.tx_names)
+            cash_tx_writer.writerow(self.schema.tx_names)
+            alert_tx_writer.writerow(self.schema.alert_tx_names)
+
+            tx_input_mappings = self._build_input_mappings(indices, self.schema.tx_name2idx)
+            alert_input_mappings = self._build_input_mappings(indices, self.schema.alert_tx_name2idx)
+
+            step_idx = indices["step"]
+            amt_idx = indices["amount"]
+            orig_idx = indices["nameOrig"]
+            dest_idx = indices["nameDest"]
+            sar_idx = indices["isSAR"]
+            alert_idx = indices["alertID"]
+            type_idx = indices["type"]
+
+            tx_id = 1
+            for row in reader:
+                if len(row) < num_columns:
+                    continue
+                try:
+                    days = int(row[step_idx])
+                    date_str = str(days)
+                    amount = row[amt_idx]
+                    orig_id = row[orig_idx]
+                    dest_id = row[dest_idx]
+                    sar_id = int(row[sar_idx])
+                    alert_id = int(row[alert_idx])
+
+                    is_sar = sar_id > 0
+                    is_alert = alert_id >= 0
+                    ttype = row[type_idx]
+                except ValueError:
+                    continue
+
+                tx_key = self._compose_tx_key(orig_id, dest_id, ttype, amount, date_str)
+                if ttype in CASH_TYPES:
+                    if tx_key not in cash_tx_seen:
+                        cash_tx_seen.add(tx_key)
+                        output_row = self.schema.get_tx_row(
+                            tx_id, date_str, amount, ttype, orig_id, dest_id, is_sar, alert_id,
+                            input_row=row, input_mappings=tx_input_mappings
+                        )
+                        cash_tx_writer.writerow(output_row)
+                else:
+                    if tx_key not in tx_seen:
+                        tx_seen.add(tx_key)
+                        output_row = self.schema.get_tx_row(
+                            tx_id, date_str, amount, ttype, orig_id, dest_id, is_sar, alert_id,
+                            input_row=row, input_mappings=tx_input_mappings
+                        )
+                        tx_writer.writerow(output_row)
+                        if pred is not None and succ is not None:
+                            pred[dest_id].add(orig_id)
+                            succ[orig_id].add(dest_id)
+
+                if is_alert:
+                    report = self.reports.get(alert_id)
+                    if report is not None:
+                        alert_row = self.schema.get_alert_tx_row(
+                            alert_id, report.get_reason(), is_sar, tx_id, orig_id, dest_id, ttype, amount, date_str,
+                            input_row=row, input_mappings=alert_input_mappings
+                        )
+                        alert_tx_writer.writerow(alert_row)
+
+                if tx_id % 1000000 == 0:
+                    print("Converted %d transactions." % tx_id)
+                tx_id += 1
+
+        if max_threshold and pred is not None and succ is not None:
+            for th in range(2, max_threshold + 1):
+                num_fan_in = sum(1 for nbs in pred.values() if len(nbs) >= th)
+                num_fan_out = sum(1 for nbs in succ.values() if len(nbs) >= th)
                 print("Number of fan-in / fan-out patterns with", th, "neighbors", num_fan_in, "/", num_fan_out)
 
     def convert_alert_members(self):
@@ -839,33 +859,36 @@ class LogConverter:
         output_file = self.alert_acct_file
 
         print("Load alert groups: %s" % input_file)
-        rf = open(os.path.join(self.input_dir, input_file), "r")
-        wf = open(os.path.join(self.work_dir, output_file), "w")
-        reader = csv.reader(rf)
-        header = next(reader)
-        indices = {name: index for index, name in enumerate(header)}
+        input_path = os.path.join(self.input_dir, input_file)
+        output_path = os.path.join(self.work_dir, output_file)
 
-        writer = csv.writer(wf)
-        header = self.schema.alert_acct_names
-        writer.writerow(header)
+        with open(input_path, "r", newline="") as rf, open(output_path, "w", newline="") as wf:
+            reader = csv.reader(rf)
+            header = next(reader)
+            indices = {name: index for index, name in enumerate(header)}
+            alert_acct_input_mappings = self._build_input_mappings(indices, self.schema.alert_acct_name2idx)
 
-        for row in reader:
-            reason = row[indices["reason"]]
-            alert_id = int(row[indices["alertID"]])
-            account_id = int(row[indices["accountID"]])
-            is_sar = row[indices["isSAR"]].lower() == "true"
-            model_id = row[indices["modelID"]]
-            schedule_id = row[indices["scheduleID"]]
-            bank_id = row[indices["bankID"]]
+            writer = csv.writer(wf)
+            writer.writerow(self.schema.alert_acct_names)
 
-            if alert_id not in self.reports:
-                self.reports[alert_id] = AMLTypology(reason)
-            self.reports[alert_id].add_member(account_id, is_sar)
+            for row in reader:
+                reason = row[indices["reason"]]
+                alert_id = int(row[indices["alertID"]])
+                account_id = int(row[indices["accountID"]])
+                is_sar = row[indices["isSAR"]].lower() == "true"
+                model_id = row[indices["modelID"]]
+                schedule_id = row[indices["scheduleID"]]
+                bank_id = row[indices["bankID"]]
 
-            attr = {name: row[index] for name, index in indices.items()}
-            output_row = self.schema.get_alert_acct_row(alert_id, reason, account_id, account_id, is_sar,
-                                                        model_id, schedule_id, bank_id, **attr)
-            writer.writerow(output_row)
+                if alert_id not in self.reports:
+                    self.reports[alert_id] = AMLTypology(reason)
+                self.reports[alert_id].add_member(account_id, is_sar)
+
+                output_row = self.schema.get_alert_acct_row(
+                    alert_id, reason, account_id, account_id, is_sar, model_id, schedule_id, bank_id,
+                    input_row=row, input_mappings=alert_acct_input_mappings
+                )
+                writer.writerow(output_row)
 
 
     def output_sar_cases(self):
@@ -875,75 +898,55 @@ class LogConverter:
         output_file = os.path.join(self.work_dir, self.sar_acct_file)
 
         print("Convert SAR typologies from %s to %s" % (input_file, output_file))
-        with open(input_file, "r") as rf:
+        with open(input_file, "r", newline="") as rf, open(output_file, "w", newline="") as wf:
             reader = csv.reader(rf)
-            alerts = self.sar_accounts(reader)
-        
-        with open(output_file, "w") as wf:
             writer = csv.writer(wf)
-            self.write_sar_accounts(writer, alerts)
+            self.write_sar_accounts(writer, self.iter_sar_accounts(reader))
 
     
     def sar_accounts(self, reader):
+        return list(self.iter_sar_accounts(reader))
+
+    def iter_sar_accounts(self, reader):
         self._recorded_accounts.clear()
         for typology in self.reports.values():
             typology.recorded_members.clear()
+            typology.transactions.clear()
+            typology.total_amount = 0.0
+            typology.count = 0
 
         header = next(reader)
         indices = {name: index for index, name in enumerate(header)}
         columns = len(header)
 
-        tx_id = 0
         for row in reader:
             if len(row) < columns:
                 continue
             try:
-                days = int(row[indices["step"]])
-                amount = float(row[indices["amount"]])
+                step = int(row[indices["step"]])
                 orig = int(row[indices["nameOrig"]])
                 dest = int(row[indices["nameDest"]])
                 alert_id = int(row[indices["alertID"]])
-                orig_name = "C_%d" % orig
-                dest_name = "C_%d" % dest
             except ValueError:
                 continue
 
-            if alert_id >= 0 and alert_id in self.reports:  # SAR transactions
-                attr = {name: row[index] for name, index in indices.items()}
-                self.reports[alert_id].add_tx(tx_id, amount, days, orig, dest, orig_name, dest_name, attr)
-                tx_id += 1
-
-        sar_accounts = list()
-        count = 0
-        num_reports = len(self.reports)
-        for sar_id, typology in self.reports.items():
-            if typology.count == 0:
+            typology = self.reports.get(alert_id)
+            if alert_id < 0 or typology is None:
                 continue
+
+            typology.count += 1
             reason = typology.get_reason()
-            is_sar = "YES" if typology.is_sar else "NO"  # SAR or false alert
-            for key, transaction in typology.transactions.items():
-                amount, step, orig_acct, dest_acct, orig_name, dest_name, attr = transaction
-                
-                if (self.account_recorded(orig_acct) 
-                and self.account_recorded(dest_acct)):
-                    continue
-                if (not self.account_recorded(orig_acct)):
-                    acct_id = orig_acct
-                    cust_id = orig_name
-                    typology.recorded_members.add(acct_id)
-                    self._recorded_accounts.add(acct_id)
-                    sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step, self.schema._base_date), reason, self.org_type(acct_id), is_sar))
-                if (not self.account_recorded(dest_acct)):
-                    acct_id = dest_acct
-                    cust_id = dest_name
-                    typology.recorded_members.add(acct_id)
-                    self._recorded_accounts.add(acct_id)
-                    sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step, self.schema._base_date), reason, self.org_type(acct_id), is_sar))
-                
-            count += 1
-            if count % 100 == 0:
-                print("SAR Typologies: %d/%d" % (count, num_reports))
-        return sar_accounts
+            is_sar = "YES" if typology.is_sar else "NO"
+            event_date = days_to_date(step, self.schema._base_date)
+
+            if not self.account_recorded(orig):
+                typology.recorded_members.add(orig)
+                self._recorded_accounts.add(orig)
+                yield (alert_id, orig, "C_%d" % orig, event_date, reason, self.org_type(orig), is_sar)
+            if not self.account_recorded(dest):
+                typology.recorded_members.add(dest)
+                self._recorded_accounts.add(dest)
+                yield (alert_id, dest, "C_%d" % dest, event_date, reason, self.org_type(dest), is_sar)
 
     def org_type(self, acct_id):
         return "INDIVIDUAL" if self.org_types[acct_id] == "I" else "COMPANY"
@@ -973,9 +976,8 @@ if __name__ == "__main__":
 
     with open(_conf_json, "r") as rf:
         conf = json.load(rf)
-    converter = LogConverter(conf, _sim_name)
-    fake = Faker(['en_US'])
     Faker.seed(0)
+    fake = Faker(["en_US"])
     converter = LogConverter(conf, _sim_name, fake)
     converter.convert_alert_members()
     converter.convert_acct_tx()

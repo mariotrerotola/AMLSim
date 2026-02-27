@@ -11,11 +11,6 @@ BENCH_DIR="${3:-outputs/benchmarks}"
 mkdir -p "$BENCH_DIR"
 REPORT_FILE="$BENCH_DIR/${SIM_NAME}.md"
 
-if [[ -d /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ]]; then
-  export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-  export PATH="$JAVA_HOME/bin:$PATH"
-fi
-
 export PYTHONPATH="scripts:scripts/amlsim"
 
 CONF_FILE_RESOLVED="$BENCH_DIR/${SIM_NAME}_conf.json"
@@ -44,8 +39,7 @@ run_timed_step() {
 }
 
 run_timed_step "generate_graph" python3 scripts/transaction_graph_generator.py "$CONF_FILE_RESOLVED"
-run_timed_step "compile_java" mvn -q -DskipTests compile
-run_timed_step "run_simulator" mvn -q -Dexec.mainClass=amlsim.AMLSim -Dexec.args="$CONF_FILE_RESOLVED" exec:java
+run_timed_step "run_simulator" sh scripts/run_AMLSim.sh "$CONF_FILE_RESOLVED"
 run_timed_step "convert_logs" python3 scripts/convert_logs.py "$CONF_FILE_RESOLVED"
 
 TMP_DIR="tmp/$SIM_NAME"
