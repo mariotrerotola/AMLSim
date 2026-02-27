@@ -7,18 +7,28 @@ class TargetedTransactionAmount:
         self.random = random_source
         self.target = float(target)
 
-    def double_value(self):
-        min_transaction_amount = self.sim_properties.get_min_transaction_amount()
-        max_transaction_amount = self.sim_properties.get_max_transaction_amount()
+    @staticmethod
+    def sample(target, min_transaction_amount, max_transaction_amount, random_source):
+        target = float(target)
+        min_transaction_amount = float(min_transaction_amount)
+        max_transaction_amount = float(max_transaction_amount)
 
-        max_amount = self.target if self.target < max_transaction_amount else max_transaction_amount
-        min_amount = self.target if self.target < min_transaction_amount else min_transaction_amount
+        max_amount = target if target < max_transaction_amount else max_transaction_amount
+        min_amount = target if target < min_transaction_amount else min_transaction_amount
 
         if max_amount - min_amount <= 0:
-            return self.target
-        if self.target - min_amount <= 100:
-            return self.target
-        return min_amount + self.random.next_double() * (max_amount - min_amount)
+            return target
+        if target - min_amount <= 100:
+            return target
+        return min_amount + random_source.next_double() * (max_amount - min_amount)
+
+    def double_value(self):
+        return self.sample(
+            self.target,
+            self.sim_properties.get_min_transaction_amount(),
+            self.sim_properties.get_max_transaction_amount(),
+            self.random,
+        )
 
 
 class AbstractTransactionModel:
@@ -63,6 +73,14 @@ class AbstractTransactionModel:
     def make_cash_transaction(self, step, amount, orig, dest, tx_type, runtime):
         runtime.handle_transaction(step, tx_type, amount, orig, dest, is_sar=False, alert_id=-1)
 
+    def targeted_amount(self, target, runtime):
+        return TargetedTransactionAmount.sample(
+            target,
+            runtime.min_transaction_amount,
+            runtime.max_transaction_amount,
+            self.random,
+        )
+
 
 class EmptyModel(AbstractTransactionModel):
     def __init__(self, random_source):
@@ -90,7 +108,7 @@ class FanInTransactionModel(AbstractTransactionModel):
         if self.index >= num_origs:
             self.index = 0
 
-        amount = TargetedTransactionAmount(account.get_balance(), runtime.sim_properties, self.random).double_value()
+        amount = self.targeted_amount(account.get_balance(), runtime)
         bene = bene_list[self.index]
         self.make_transaction(step, amount, account, bene, runtime)
         self.index += 1
@@ -114,7 +132,7 @@ class FanOutTransactionModel(AbstractTransactionModel):
         if self.index >= num_bene:
             self.index = 0
 
-        amount = TargetedTransactionAmount(account.get_balance(), runtime.sim_properties, self.random).double_value()
+        amount = self.targeted_amount(account.get_balance(), runtime)
         bene = bene_list[self.index]
         if amount > 0:
             self.make_transaction(step, amount, account, bene, runtime)
@@ -141,7 +159,7 @@ class ForwardTransactionModel(AbstractTransactionModel):
         if self.index >= num_dests:
             self.index = 0
 
-        amount = TargetedTransactionAmount(account.get_balance(), runtime.sim_properties, self.random).double_value()
+        amount = self.targeted_amount(account.get_balance(), runtime)
         dest = dests[self.index]
         self.make_transaction(step, amount, account, dest, runtime)
         self.index += 1
@@ -167,7 +185,7 @@ class MutualTransactionModel(AbstractTransactionModel):
                 return
             counterpart = origs[0]
 
-        amount = TargetedTransactionAmount(account.get_balance(), runtime.sim_properties, self.random).double_value()
+        amount = self.targeted_amount(account.get_balance(), runtime)
         if counterpart not in account.get_bene_list():
             account.add_bene_account(counterpart)
         self.make_transaction(step, amount, account, counterpart, runtime)
@@ -196,11 +214,11 @@ class PeriodicalTransactionModel(AbstractTransactionModel):
 
         total_count = self.get_number_of_transactions(runtime.sim_properties.get_steps())
         each_count = 1 if num_dests < total_count or total_count <= 0 else num_dests // total_count
-        amount_gen = TargetedTransactionAmount(account.get_balance() / max(each_count, 1), runtime.sim_properties, self.random)
+        base_amount = account.get_balance() / max(each_count, 1)
 
         for _ in range(each_count):
             dest = bene_list[self.index]
-            self.make_transaction(step, amount_gen.double_value(), account, dest, runtime)
+            self.make_transaction(step, self.targeted_amount(base_amount, runtime), account, dest, runtime)
             self.index += 1
             if self.index >= num_dests:
                 break
@@ -231,7 +249,7 @@ class SingleTransactionModel(AbstractTransactionModel):
         if step != self.tx_step or num_bene == 0:
             return
 
-        amount = TargetedTransactionAmount(account.get_balance(), runtime.sim_properties, self.random).double_value()
+        amount = self.targeted_amount(account.get_balance(), runtime)
         index = self.random.next_int(num_bene)
         dest = bene_list[index]
         self.make_transaction(step, amount, account, dest, runtime)
@@ -446,7 +464,7 @@ class FanInTypology(AMLTypology):
         is_sar = self.alert.is_sar()
         for i, orig in enumerate(self.orig_list):
             if self.steps[i] == step:
-                amount = TargetedTransactionAmount(orig.get_balance(), runtime.sim_properties, self.random).double_value()
+                amount = self.targeted_amount(orig.get_balance(), runtime)
                 self.make_transaction(step, amount, orig, self.bene, runtime, is_sar=is_sar, alert_id=alert_id)
 
 
@@ -495,8 +513,7 @@ class FanOutTypology(AMLTypology):
         alert_id = self.alert.alert_id
         is_sar = self.alert.is_sar()
         num_bene = len(self.bene_list)
-        amount_gen = TargetedTransactionAmount(self.orig.get_balance() / num_bene if num_bene else 0.0, runtime.sim_properties, self.random)
-        amount = amount_gen.double_value()
+        amount = self.targeted_amount(self.orig.get_balance() / num_bene if num_bene else 0.0, runtime)
         for i, bene in enumerate(self.bene_list):
             if self.steps[i] == step:
                 self.make_transaction(step, amount, self.orig, bene, runtime, is_sar=is_sar, alert_id=alert_id)
@@ -558,7 +575,7 @@ class CycleTypology(AMLTypology):
                 dst = self.alert.members[j]
                 if src.get_balance() < amount:
                     amount = src.get_balance()
-                tx_amount = TargetedTransactionAmount(amount, runtime.sim_properties, self.random).double_value()
+                tx_amount = self.targeted_amount(amount, runtime)
                 self.make_transaction(step, tx_amount, src, dst, runtime, is_sar=is_sar, alert_id=alert_id)
                 margin = amount * self.margin_ratio
                 amount = amount - margin
@@ -576,10 +593,10 @@ class BipartiteTypology(AMLTypology):
             if orig.get_id() != account.get_id():
                 continue
             num_bene = len(members) - last_orig_index
-            amount = TargetedTransactionAmount(orig.get_balance() / num_bene if num_bene else 0.0, runtime.sim_properties, self.random)
+            base_amount = orig.get_balance() / num_bene if num_bene else 0.0
             for j in range(last_orig_index, len(members)):
                 bene = members[j]
-                self.make_transaction(step, amount.double_value(), orig, bene, runtime)
+                self.make_transaction(step, self.targeted_amount(base_amount, runtime), orig, bene, runtime)
 
 
 class StackTypology(AMLTypology):
@@ -596,20 +613,20 @@ class StackTypology(AMLTypology):
             if orig.get_id() != account.get_id():
                 continue
             num_bene = (orig_members + mid_members) - orig_members
-            amount = TargetedTransactionAmount(orig.get_balance() / num_bene if num_bene else 0.0, runtime.sim_properties, self.random)
+            base_amount = orig.get_balance() / num_bene if num_bene else 0.0
             for j in range(orig_members, orig_members + mid_members):
                 bene = members[j]
-                self.make_transaction(step, amount.double_value(), orig, bene, runtime)
+                self.make_transaction(step, self.targeted_amount(base_amount, runtime), orig, bene, runtime)
 
         for i in range(orig_members, orig_members + mid_members):
             orig = members[i]
             if orig.get_id() != account.get_id():
                 continue
             num_bene = total_members - (orig_members + mid_members)
-            amount = TargetedTransactionAmount(orig.get_balance() / num_bene if num_bene else 0.0, runtime.sim_properties, self.random)
+            base_amount = orig.get_balance() / num_bene if num_bene else 0.0
             for j in range(orig_members + mid_members, total_members):
                 bene = members[j]
-                self.make_transaction(step, amount.double_value(), orig, bene, runtime)
+                self.make_transaction(step, self.targeted_amount(base_amount, runtime), orig, bene, runtime)
 
 
 class RandomTypology(AMLTypology):
@@ -635,7 +652,7 @@ class RandomTypology(AMLTypology):
             return
         idx = self.random.next_int(len(bene_list))
         bene = bene_list[idx]
-        amount = TargetedTransactionAmount(self.next_orig.get_balance(), runtime.sim_properties, self.random).double_value()
+        amount = self.targeted_amount(self.next_orig.get_balance(), runtime)
         self.make_transaction(step, amount, self.next_orig, bene, runtime, is_sar=self.alert.is_sar(), alert_id=self.alert.alert_id)
         self.next_orig = bene
 
@@ -689,12 +706,12 @@ class ScatterGatherTypology(AMLTypology):
             if self.scatter_steps[i] == step:
                 bene = self.intermediate[i]
                 target = min(self.orig.get_balance(), self.scatter_amount)
-                amount = TargetedTransactionAmount(target, runtime.sim_properties, self.random).double_value()
+                amount = self.targeted_amount(target, runtime)
                 self.make_transaction(step, amount, self.orig, bene, runtime, is_sar=is_sar, alert_id=alert_id)
             elif self.gather_steps[i] == step:
                 orig = self.intermediate[i]
                 target = min(orig.get_balance(), self.scatter_amount)
-                amount = TargetedTransactionAmount(target, runtime.sim_properties, self.random).double_value()
+                amount = self.targeted_amount(target, runtime)
                 self.make_transaction(step, amount, orig, self.bene, runtime, is_sar=is_sar, alert_id=alert_id)
 
 
@@ -751,7 +768,7 @@ class GatherScatterTypology(AMLTypology):
             for i in range(num_gather):
                 if self.gather_steps[i] == step:
                     orig = self.orig_accts[i]
-                    amount = TargetedTransactionAmount(orig.get_balance(), runtime.sim_properties, self.random).double_value()
+                    amount = self.targeted_amount(orig.get_balance(), runtime)
                     self.make_transaction(step, amount, orig, main, runtime, is_sar=is_sar, alert_id=alert_id)
                     self.total_received_amount += amount
         else:
@@ -759,7 +776,7 @@ class GatherScatterTypology(AMLTypology):
                 if self.scatter_steps[i] == step:
                     bene = self.bene_accts[i]
                     target = min(main.get_balance(), self.scatter_amount)
-                    amount = TargetedTransactionAmount(target, runtime.sim_properties, self.random).double_value()
+                    amount = self.targeted_amount(target, runtime)
                     self.make_transaction(step, amount, main, bene, runtime, is_sar=is_sar, alert_id=alert_id)
 
         if step == self.middle_step and num_scatter > 0:

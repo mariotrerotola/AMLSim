@@ -15,6 +15,7 @@ class Account:
         self.num_sar_bene = 0
         self.prev_orig = None
         self.tx_types = {}
+        self._tx_type_values_cache = None
         self.alerts = []
         self.account_groups = []
         self.branch = None
@@ -54,6 +55,7 @@ class Account:
     def add_tx_type(self, bene, tx_type):
         tx_type = str(tx_type)
         self.tx_types[bene.id] = tx_type
+        self._tx_type_values_cache = None
         Account.all_tx_types.append(tx_type)
 
     def get_tx_type(self, bene):
@@ -61,8 +63,10 @@ class Account:
         if dest_id in self.tx_types:
             return self.tx_types[dest_id]
         if self.tx_types:
-            target = self.random.next_int(len(self.tx_types))
-            return list(self.tx_types.values())[target]
+            if self._tx_type_values_cache is None:
+                self._tx_type_values_cache = list(self.tx_types.values())
+            target = self.random.next_int(len(self._tx_type_values_cache))
+            return self._tx_type_values_cache[target]
         if Account.all_tx_types:
             return Account.all_tx_types[self.random.next_int(len(Account.all_tx_types))]
         return "TRANSFER"

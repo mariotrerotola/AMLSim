@@ -594,10 +594,20 @@ class TransactionGenerator:
 
 
     def mark_active_edges(self):
-        nx.set_edge_attributes(self.g, False, 'active')
+        g = self.g
+        nx.set_edge_attributes(g, False, 'active')
+        active_edges = set()
         for normal_model in self.normal_models:
-            subgraph = self.g.subgraph(normal_model.node_ids)
-            nx.set_edge_attributes(subgraph, True, 'active')
+            model_nodes = normal_model.node_ids
+            if not isinstance(model_nodes, set):
+                model_nodes = set(model_nodes)
+            for src in model_nodes:
+                for dst in g.successors(src):
+                    if dst in model_nodes:
+                        active_edges.add((src, dst))
+
+        if active_edges:
+            nx.set_edge_attributes(g, {edge: True for edge in active_edges}, 'active')
 
 
     def load_normal_models(self):
@@ -1240,9 +1250,6 @@ class TransactionGenerator:
         logger.info("Exported %d transactions to %s" % (self.g.number_of_edges(), tx_file))
 
     def write_alert_account_list(self):
-        def get_out_edge_attrs(g, vid, name):
-            return [v for k, v in nx.get_edge_attributes(g, name).items() if (k[0] == vid or k[1] == vid)]
-
         acct_count = 0
         alert_member_file = os.path.join(self.output_dir, self.out_alert_member_file)
         logger.info("Output alert member list to: " + alert_member_file)
@@ -1258,11 +1265,17 @@ class TransactionGenerator:
                 reason = sub_g.graph["reason"]
                 start = sub_g.graph["start"]
                 end = sub_g.graph["end"]
+                node_amounts = defaultdict(list)
+                for src, dst, edge_attr in sub_g.edges(data=True):
+                    amount = edge_attr["amount"]
+                    node_amounts[src].append(amount)
+                    node_amounts[dst].append(amount)
                 for n in sub_g.nodes():
                     is_main = "true" if n == main_id else "false"
                     is_sar = "true" if sub_g.graph[IS_SAR_KEY] else "false"
-                    min_amt = '{:.2f}'.format(min(get_out_edge_attrs(sub_g, n, "amount")))
-                    max_amt = '{:.2f}'.format(max(get_out_edge_attrs(sub_g, n, "amount")))
+                    amounts = node_amounts[n]
+                    min_amt = '{:.2f}'.format(min(amounts))
+                    max_amt = '{:.2f}'.format(max(amounts))
                     min_step = start
                     max_step = end
                     bank_id = sub_g.nodes[n]["bank_id"]

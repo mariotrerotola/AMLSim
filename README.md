@@ -1,18 +1,19 @@
 # AMLSim
 
-AMLSim is a multi-agent anti-money-laundering simulator that generates synthetic financial transaction data for research, experimentation, and model validation.
+AMLSim is a Python-based anti-money-laundering simulator for generating synthetic financial data used in research, model development, and pipeline validation.
 
-The project combines:
-- Python preprocessing for graph and parameter generation
-- Python simulation for time-stepped transaction execution
-- Python post-processing for export and analysis
+The project includes:
+- Transaction graph generation
+- Time-stepped simulation runtime
+- Log conversion to analytics-ready CSV outputs
 
-## Why AMLSim
+## Highlights
 
-- Produces reproducible synthetic AML datasets from configurable scenarios
-- Supports alert pattern injection and SAR-oriented outputs
-- Generates CSV artifacts suitable for graph analytics and ML pipelines
-- Includes automated tests and a smoke benchmark workflow
+- Python-only runtime and tooling
+- Reproducible simulation runs with configurable seeds
+- Built-in normal behavior models and AML typology injection
+- End-to-end outputs for graph analytics and ML workflows
+- Automated tests and smoke benchmark support
 
 ## Requirements
 
@@ -20,7 +21,7 @@ The project combines:
 - Python 3.10+
 - Python dependencies from `requirements.txt`
 
-Install Python dependencies:
+Install dependencies:
 
 ```bash
 pip3 install -r requirements.txt
@@ -28,28 +29,28 @@ pip3 install -r requirements.txt
 
 ## Quick Start
 
-1. Generate transaction graph inputs:
+1. Generate temporal graph inputs:
 
 ```bash
 python3 scripts/transaction_graph_generator.py conf.json
 ```
 
-2. Build AMLSim:
-
-```bash
-sh scripts/build_AMLSim.sh
-```
-
-3. Run simulation:
+2. Run the simulator:
 
 ```bash
 sh scripts/run_AMLSim.sh conf.json
 ```
 
-4. Convert raw logs to final CSV outputs:
+3. Convert simulation logs to final datasets:
 
 ```bash
 python3 scripts/convert_logs.py conf.json
+```
+
+Optional single-command pipeline:
+
+```bash
+sh scripts/run_batch.sh conf.json
 ```
 
 Optional utilities:
@@ -62,18 +63,26 @@ sh scripts/clean_logs.sh
 
 ## Configuration
 
-The main runtime configuration is `conf.json`.
+Main runtime configuration file: `conf.json`.
 
-Key sections:
-- `input`: parameter directory and schema source files
-- `general`: simulation metadata (`simulation_name`, `total_steps`, `base_date`)
-- `output`: generated file names and destination directory
+Primary sections:
+- `general`: simulation metadata (`simulation_name`, `total_steps`, `base_date`, `random_seed`)
+- `default`: fallback financial and behavior parameters
+- `input`: source parameter files (`accounts`, `degree`, `alert_patterns`, `normal_models`, `schema`)
+- `temporal`: intermediate files produced before simulation
+- `simulator`: runtime options (`transaction_interval`, `transaction_limit`, `compute_diameter`, `numBranches`)
+- `output`: final exported file names and destination directory
+- `graph_generator`: graph generation controls
 
-For production-scale runs, copy one of the templates under `paramFiles/` and update `conf.json` accordingly.
+Environment overrides:
+- `RANDOM_SEED`: overrides `general.random_seed`
+- `SIMULATION_NAME`: overrides `general.simulation_name`
+
+For larger scenarios, start from presets under `paramFiles/` and adapt `conf.json`.
 
 ## Testing
 
-Run Python tests:
+Run all Python tests:
 
 ```bash
 PYTHONPATH=scripts:scripts/amlsim pytest -q
@@ -81,24 +90,34 @@ PYTHONPATH=scripts:scripts/amlsim pytest -q
 
 ## Smoke Benchmark
 
-Run a full end-to-end smoke benchmark:
+Run a reproducible end-to-end smoke benchmark:
 
 ```bash
 ./scripts/benchmark_smoke.sh conf.json
 ```
 
-Outputs:
-- Step logs and timing report in `outputs/benchmarks/`
-- Effective benchmark config stored with unique `simulation_name`
+Artifacts:
+- Step logs and timing report under `outputs/benchmarks/`
+- Effective benchmark config with a unique `simulation_name`
 
-Details: `docs/performance/smoke-benchmark.md`
+Reference: `docs/performance/smoke-benchmark.md`
+
+## Performance Notes
+
+Recent optimizations include:
+- Buffered transaction and counter log writes in runtime repository
+- Cache for transaction-type fallback lookup on accounts
+- Reduced per-transaction object allocations in simulation models
+- Faster dedupe key handling and date-column processing in log conversion
+- Optimized active-edge marking and alert amount aggregation in graph generation
 
 ## Project Layout
 
-- `scripts/`: Python data generation and processing scripts
-- `paramFiles/`: parameter presets
+- `scripts/`: runtime, generators, conversion, validation, utilities
+- `scripts/amlsim/`: core simulation models and runtime components
+- `paramFiles/`: parameter presets by dataset scale and scenario
 - `tests/`: Python test suite
-- `docs/`: project documentation
+- `docs/`: documentation (migration and performance notes)
 - `outputs/`, `tmp/`: generated artifacts
 
 ## Citation

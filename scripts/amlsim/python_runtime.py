@@ -32,6 +32,8 @@ class PythonAMLSim:
     def __init__(self, sim_properties):
         self.sim_properties = sim_properties
         self.random = JavaRandom(sim_properties.get_seed())
+        self.min_transaction_amount = sim_properties.get_min_transaction_amount()
+        self.max_transaction_amount = sim_properties.get_max_transaction_amount()
         Account.all_tx_types = []
         self.accounts = {}
         self.account_order = []

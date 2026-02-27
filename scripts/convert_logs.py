@@ -172,6 +172,13 @@ class Schema:
         self.party_party_ref_idx = None
         self.party_party_first_idx = None
         self.party_party_second_idx = None
+        self.tx_date_indices = []
+        self.alert_acct_date_indices = []
+        self.alert_tx_date_indices = []
+        self.party_ind_date_indices = []
+        self.party_org_date_indices = []
+        self.acct_party_date_indices = []
+        self.party_party_date_indices = []
         self._parse()
 
     def _parse(self):
@@ -375,6 +382,14 @@ class Schema:
             elif d_type == "second_id":
                 self.party_party_second_idx = idx
 
+        self.tx_date_indices = [idx for idx, v_type in enumerate(self.tx_types) if v_type == "date"]
+        self.alert_acct_date_indices = [idx for idx, v_type in enumerate(self.alert_acct_types) if v_type == "date"]
+        self.alert_tx_date_indices = [idx for idx, v_type in enumerate(self.alert_tx_types) if v_type == "date"]
+        self.party_ind_date_indices = [idx for idx, v_type in enumerate(self.party_ind_types) if v_type == "date"]
+        self.party_org_date_indices = [idx for idx, v_type in enumerate(self.party_org_types) if v_type == "date"]
+        self.acct_party_date_indices = [idx for idx, v_type in enumerate(self.acct_party_types) if v_type == "date"]
+        self.party_party_date_indices = [idx for idx, v_type in enumerate(self.party_party_types) if v_type == "date"]
+
     def days2date(self, _days):
         """Get date as ISO 8601 format from days from the "base_date". If failed, return an empty string.
         :param _days: Days from the "base_date"
@@ -415,9 +430,8 @@ class Schema:
                     idx = self.tx_name2idx[name]
                     row[idx] = value
 
-        for idx, v_type in enumerate(self.tx_types):
-            if v_type == "date":
-                row[idx] = self.days2date(row[idx])  # convert days to date
+        for idx in self.tx_date_indices:
+            row[idx] = self.days2date(row[idx])  # convert days to date
         return row
 
     def get_alert_acct_row(self, _alert_id, _reason, _acct_id, _acct_name, _is_sar,
@@ -440,9 +454,8 @@ class Schema:
                     idx = self.alert_acct_name2idx[name]
                     row[idx] = value
 
-        for idx, v_type in enumerate(self.alert_acct_types):
-            if v_type == "date":
-                row[idx] = self.days2date(row[idx])  # convert days to date
+        for idx in self.alert_acct_date_indices:
+            row[idx] = self.days2date(row[idx])  # convert days to date
         return row
 
     def get_alert_tx_row(self, _alert_id, _alert_type, _is_sar, _tx_id, _orig, _dest,
@@ -466,9 +479,8 @@ class Schema:
                     idx = self.alert_tx_name2idx[name]
                     row[idx] = value
 
-        for idx, v_type in enumerate(self.alert_tx_types):
-            if v_type == "date":
-                row[idx] = self.days2date(row[idx])  # convert days to date
+        for idx in self.alert_tx_date_indices:
+            row[idx] = self.days2date(row[idx])  # convert days to date
         return row
 
     def get_party_ind_row(self, _party_id, **attr):
@@ -480,9 +492,8 @@ class Schema:
                 idx = self.party_ind_name2idx[name]
                 row[idx] = value
 
-        for idx, v_type in enumerate(self.party_ind_types):
-            if v_type == "date":
-                row[idx] = self.days2date(row[idx])  # convert days to date
+        for idx in self.party_ind_date_indices:
+            row[idx] = self.days2date(row[idx])  # convert days to date
         return row
 
     def get_party_org_row(self, _party_id, **attr):
@@ -494,9 +505,8 @@ class Schema:
                 idx = self.party_org_name2idx[name]
                 row[idx] = value
 
-        for idx, v_type in enumerate(self.party_org_types):
-            if v_type == "date":
-                row[idx] = self.days2date(row[idx])  # convert days to date
+        for idx in self.party_org_date_indices:
+            row[idx] = self.days2date(row[idx])  # convert days to date
         return row
 
     def get_acct_party_row(self, _mapping_id, _acct_id, _party_id, **attr):
@@ -510,9 +520,8 @@ class Schema:
                 idx = self.acct_party_name2idx[name]
                 row[idx] = value
 
-        for idx, v_type in enumerate(self.acct_party_types):
-            if v_type == "date":
-                row[idx] = self.days2date(row[idx])  # convert days to date
+        for idx in self.acct_party_date_indices:
+            row[idx] = self.days2date(row[idx])  # convert days to date
         return row
 
     def get_party_party_row(self, _ref_id, _first_id, _second_id, **attr):
@@ -526,9 +535,8 @@ class Schema:
                 idx = self.party_party_name2idx[name]
                 row[idx] = value
 
-        for idx, v_type in enumerate(self.party_party_types):
-            if v_type == "date":
-                row[idx] = self.days2date(row[idx])  # convert days to date
+        for idx in self.party_party_date_indices:
+            row[idx] = self.days2date(row[idx])  # convert days to date
         return row
 
 
@@ -608,7 +616,7 @@ class LogConverter:
 
     @staticmethod
     def _compose_tx_key(orig_id, dest_id, ttype, amount, date_str):
-        return "|".join((orig_id, dest_id, ttype, amount, date_str))
+        return orig_id, dest_id, ttype, amount, date_str
 
     def _build_account_field_plan(self, header_map):
         lookup = AccountDataTypeLookup()

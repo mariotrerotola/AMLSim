@@ -82,8 +82,12 @@ class TransactionRepository:
     def writeCounterLog(self, steps, log_file):
         with open(log_file, "w", newline="") as writer:
             writer.write("step,normal,SAR\n")
-            for step in range(int(steps)):
-                writer.write(f"{step},{self.tx_counter[step]},{self.sar_tx_counter[step]}\n")
+            tx_counter = self.tx_counter
+            sar_tx_counter = self.sar_tx_counter
+            writer.writelines(
+                f"{step},{tx_counter[step]},{sar_tx_counter[step]}\n"
+                for step in range(int(steps))
+            )
             writer.flush()
 
     def flushLog(self):
@@ -92,13 +96,27 @@ class TransactionRepository:
         if self.log_writer is None:
             raise RuntimeError("Transaction log writer is not initialized")
 
-        for i in range(self.index):
-            self.log_writer.write(
-                f"{self.steps[i]},{self.descriptions[i]},{self._double_precision(self.amounts[i])},"
-                f"{self.orig_ids[i]},{self._double_precision(self.orig_before[i])},"
-                f"{self._double_precision(self.orig_after[i])},{self.dest_ids[i]},"
-                f"{self._double_precision(self.dest_before[i])},{self._double_precision(self.dest_after[i])},"
-                f"{'1' if self.is_sar[i] else '0'},{self.alert_ids[i]}\n"
-            )
+        size = self.index
+        steps = self.steps
+        descriptions = self.descriptions
+        amounts = self.amounts
+        orig_ids = self.orig_ids
+        dest_ids = self.dest_ids
+        orig_before = self.orig_before
+        orig_after = self.orig_after
+        dest_before = self.dest_before
+        dest_after = self.dest_after
+        is_sar = self.is_sar
+        alert_ids = self.alert_ids
+        double_precision = self._double_precision
+
+        self.log_writer.writelines(
+            f"{steps[i]},{descriptions[i]},{double_precision(amounts[i])},"
+            f"{orig_ids[i]},{double_precision(orig_before[i])},"
+            f"{double_precision(orig_after[i])},{dest_ids[i]},"
+            f"{double_precision(dest_before[i])},{double_precision(dest_after[i])},"
+            f"{'1' if is_sar[i] else '0'},{alert_ids[i]}\n"
+            for i in range(size)
+        )
         self.log_writer.flush()
         self.index = 0
