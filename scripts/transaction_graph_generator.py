@@ -510,11 +510,8 @@ class TransactionGenerator:
         self.g = G
 
         logger.info("Add %d base transactions" % self.g.number_of_edges())
-        nodes = self.g.nodes()
         for src_i, dst_i in self.g.edges():
-            src = nodes[src_i]
-            dst = nodes[dst_i]
-            self.add_edge_info(src, dst)  # Add edge info.
+            self.add_edge_info(src_i, dst_i)  # Add edge info.
 
     def add_account(self, acct_id, **attr):
         """Add an account vertex
@@ -532,7 +529,7 @@ class TransactionGenerator:
         if attr['bank_id'] is None:
             attr['bank_id'] = self.default_bank_id
 
-        self.g.node[acct_id] = attr
+        self.g.nodes[acct_id].update(attr)
 
         self.bank_to_accts[attr['bank_id']].add(acct_id)
         self.acct_to_bank[acct_id] = attr['bank_id']
@@ -558,7 +555,7 @@ class TransactionGenerator:
         self.check_account_exist(bene)
         if orig == bene:
             raise ValueError("Self loop from/to %s is not allowed for transaction networks" % str(orig))
-        self.g.edge[orig][bene]['edge_id'] = self.edge_id
+        self.g[orig][bene]['edge_id'] = self.edge_id
         self.edge_id += 1
 
     # Load Custom Topology Files
@@ -590,10 +587,10 @@ class TransactionGenerator:
 
 
     def mark_active_edges(self):
-        nx.set_edge_attributes(self.g, 'active', False)
+        nx.set_edge_attributes(self.g, False, 'active')
         for normal_model in self.normal_models:
             subgraph = self.g.subgraph(normal_model.node_ids)
-            nx.set_edge_attributes(subgraph, 'active', True)
+            nx.set_edge_attributes(subgraph, True, 'active')
 
 
     def load_normal_models(self):
@@ -672,7 +669,7 @@ class TransactionGenerator:
         normal_model = NormalModel(self.normal_model_id, type, result_ids, node_id)
 
         for result_id in result_ids:
-            self.g.node[result_id]['normal_models'].append(normal_model)
+            self.g.nodes[result_id]['normal_models'].append(normal_model)
 
         self.normal_models.append(normal_model)
         
@@ -697,7 +694,7 @@ class TransactionGenerator:
         result_ids = candidates | { node_id }
         normal_model = NormalModel(self.normal_model_id, type, result_ids, node_id)
         for id in result_ids:
-            self.g.node[id]['normal_models'].append(normal_model)
+            self.g.nodes[id]['normal_models'].append(normal_model)
 
         self.normal_models.append(normal_model)
 
@@ -720,7 +717,7 @@ class TransactionGenerator:
         )
         normal_model = NormalModel(self.normal_model_id, type, list(set), node_id)
         for id in set:
-            self.g.node[id]['normal_models'].append(normal_model)
+            self.g.nodes[id]['normal_models'].append(normal_model)
 
         self.normal_models.append(normal_model)
 
@@ -739,7 +736,7 @@ class TransactionGenerator:
         result_ids = { node_id, succ_id }
         normal_model = NormalModel(self.normal_model_id, type, result_ids, node_id)
         for id in result_ids:
-            self.g.node[id]['normal_models'].append(normal_model)
+            self.g.nodes[id]['normal_models'].append(normal_model)
 
         self.normal_models.append(normal_model)
 
@@ -758,7 +755,7 @@ class TransactionGenerator:
         result_ids = { node_id, succ_id }
         normal_model = NormalModel(self.normal_model_id, type, result_ids, node_id)
         for id in result_ids:
-            self.g.node[id]['normal_models'].append(normal_model)
+            self.g.nodes[id]['normal_models'].append(normal_model)
 
         self.normal_models.append(normal_model)
 
@@ -777,7 +774,7 @@ class TransactionGenerator:
         result_ids = { node_id, succ_id }
         normal_model = NormalModel(self.normal_model_id, type, result_ids, node_id)
         for id in result_ids:
-            self.g.node[id]['normal_models'].append(normal_model)
+            self.g.nodes[id]['normal_models'].append(normal_model)
 
         self.normal_models.append(normal_model)
 
@@ -880,10 +877,10 @@ class TransactionGenerator:
             :param _acct: Account ID
             :param _bank_id: Bank ID
             """
-            attr_dict = self.g.node[_acct]
+            attr_dict = dict(self.g.nodes[_acct])
             attr_dict[IS_SAR_KEY] = True
 
-            sub_g.add_node(_acct, attr_dict)
+            sub_g.add_node(_acct, **attr_dict)
 
 
         def add_main_acct():
@@ -1261,10 +1258,10 @@ class TransactionGenerator:
                     max_amt = '{:.2f}'.format(max(get_out_edge_attrs(sub_g, n, "amount")))
                     min_step = start
                     max_step = end
-                    bank_id = sub_g.node[n]["bank_id"]
+                    bank_id = sub_g.nodes[n]["bank_id"]
                     values = [gid, reason, n, is_main, is_sar, model_id, min_amt, max_amt,
                               min_step, max_step, schedule_id, bank_id]
-                    prop = self.g.node[n]
+                    prop = self.g.nodes[n]
                     for attr_name in self.attr_names:
                         values.append(prop[attr_name])
                     writer.writerow(values)

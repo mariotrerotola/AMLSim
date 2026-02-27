@@ -92,9 +92,9 @@ class TransactionGraphGeneratorTests(unittest.TestCase):
             [0, 0, 2, 1, 1, 0, 0, 0, 1, 1, 0, 0],
             0
         )
-        self.assertEqual(G.selfloop_edges(), [])
+        self.assertEqual(list(nx.selfloop_edges(G)), [])
 
-    
+
     def test_directed_configuration_model_self_loops(self):
         G = directed_configuration_model(
             [10, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0], # in
@@ -113,7 +113,7 @@ class TransactionGraphGeneratorTests(unittest.TestCase):
         self.assertEqual(G.degree(9), 0)
         self.assertEqual(G.degree(10), 0)
         self.assertEqual(G.degree(11), 0)
-        self.assertEqual(G.selfloop_edges(), [])
+        self.assertEqual(list(nx.selfloop_edges(G)), [])
 
 
     def test_mark_active_edges_marks_default_as_false(self):
