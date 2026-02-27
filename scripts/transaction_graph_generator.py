@@ -16,6 +16,7 @@ import cProfile
 
 
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from amlsim.nominator import Nominator
 from amlsim.normal_model import NormalModel
 
@@ -26,6 +27,12 @@ from amlsim.rounded_amount import RoundedAmount
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def random_sample(population, k):
+    if not isinstance(population, Sequence):
+        population = list(population)
+    return random.sample(population, k)
 
 # Attribute keys
 MAIN_ACCT_KEY = "main_acct"  # Main account ID (SAR typology subgraph attribute)
@@ -339,9 +346,9 @@ class TransactionGenerator:
         if bank_id in self.bank_to_accts:  # Choose members from the same bank as the main account
             bank_accts = self.bank_to_accts[bank_id]
             main_candidates = self.hubs & bank_accts
-            main_acct = random.sample(main_candidates, 1)[0]
+            main_acct = random_sample(list(main_candidates), 1)[0]
             self.remove_typology_candidate(main_acct)
-            sub_accts = random.sample(bank_accts, num - 1)
+            sub_accts = random_sample(bank_accts, num - 1)
             for n in sub_accts:
                 self.remove_typology_candidate(n)
 
@@ -350,10 +357,10 @@ class TransactionGenerator:
 
         elif bank_id == "":  # Choose members from all accounts
             self.check_hub_exists()
-            main_acct = random.sample(self.hubs, 1)[0]
+            main_acct = random_sample(list(self.hubs), 1)[0]
             self.remove_typology_candidate(main_acct)
 
-            sub_accts = random.sample(self.acct_to_bank.keys(), num - 1)
+            sub_accts = random_sample(list(self.acct_to_bank.keys()), num - 1)
             for n in sub_accts:
                 self.remove_typology_candidate(n)
             members = [main_acct] + sub_accts
@@ -888,7 +895,7 @@ class TransactionGenerator:
             :return: main account ID and bank ID
             """
             self.check_hub_exists()
-            _main_acct = random.sample(self.hubs, 1)[0]
+            _main_acct = random_sample(list(self.hubs), 1)[0]
             _main_bank_id = self.acct_to_bank[_main_acct]
             self.remove_typology_candidate(_main_acct)
             add_node(_main_acct, _main_bank_id)
@@ -936,7 +943,7 @@ class TransactionGenerator:
                 sub_bank_id = random.choice(sub_bank_candidates)
             else:
                 sub_bank_id = main_bank_id
-            sub_accts = random.sample(self.bank_to_accts[sub_bank_id], num_neighbors)
+            sub_accts = random_sample(self.bank_to_accts[sub_bank_id], num_neighbors)
             for n in sub_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, sub_bank_id)
@@ -959,7 +966,7 @@ class TransactionGenerator:
                 sub_bank_id = random.choice(sub_bank_candidates)
             else:
                 sub_bank_id = main_bank_id
-            sub_accts = random.sample(self.bank_to_accts[sub_bank_id], num_neighbors)
+            sub_accts = random_sample(self.bank_to_accts[sub_bank_id], num_neighbors)
             for n in sub_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, sub_bank_id)
@@ -978,13 +985,13 @@ class TransactionGenerator:
             num_orig_accts = num_accounts // 2  # The former half members are originator accounts
             num_bene_accts = num_accounts - num_orig_accts  # The latter half members are beneficiary accounts
 
-            orig_accts = random.sample(self.bank_to_accts[orig_bank_id], num_orig_accts)
+            orig_accts = random_sample(self.bank_to_accts[orig_bank_id], num_orig_accts)
             for n in orig_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, orig_bank_id)
             main_acct = orig_accts[0]
 
-            bene_accts = random.sample(self.bank_to_accts[bene_bank_id], num_bene_accts)
+            bene_accts = random_sample(self.bank_to_accts[bene_bank_id], num_bene_accts)
             for n in bene_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, bene_bank_id)
@@ -997,29 +1004,29 @@ class TransactionGenerator:
         elif typology_name == "stack":  # stacked bipartite layers
             if is_external:
                 if len(self.get_all_bank_ids()) >= 3:
-                    [orig_bank_id, mid_bank_id, bene_bank_id] = random.sample(self.get_all_bank_ids(), 3)
+                    [orig_bank_id, mid_bank_id, bene_bank_id] = random_sample(self.get_all_bank_ids(), 3)
                 else:
-                    [orig_bank_id, mid_bank_id] = random.sample(self.get_all_bank_ids(), 2)
+                    [orig_bank_id, mid_bank_id] = random_sample(self.get_all_bank_ids(), 2)
                     bene_bank_id = orig_bank_id
             else:
-                orig_bank_id = mid_bank_id = bene_bank_id = random.sample(self.get_all_bank_ids(), 1)[0]
+                orig_bank_id = mid_bank_id = bene_bank_id = random_sample(self.get_all_bank_ids(), 1)[0]
 
             # First and second 1/3 of members: originator and intermediate accounts
             num_orig_accts = num_mid_accts = num_accounts // 3
             # Last 1/3 of members: beneficiary accounts
             num_bene_accts = num_accounts - num_orig_accts * 2
 
-            orig_accts = random.sample(self.bank_to_accts[orig_bank_id], num_orig_accts)
+            orig_accts = random_sample(self.bank_to_accts[orig_bank_id], num_orig_accts)
             for n in orig_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, orig_bank_id)
             main_acct = orig_accts[0]
 
-            mid_accts = random.sample(self.bank_to_accts[mid_bank_id], num_mid_accts)
+            mid_accts = random_sample(self.bank_to_accts[mid_bank_id], num_mid_accts)
             for n in mid_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, mid_bank_id)
-            bene_accts = random.sample(self.bank_to_accts[bene_bank_id], num_bene_accts)
+            bene_accts = random_sample(self.bank_to_accts[bene_bank_id], num_bene_accts)
             for n in bene_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, bene_bank_id)
@@ -1045,7 +1052,7 @@ class TransactionGenerator:
                 main_acct = None
                 for _ in range(num_accounts):
                     bank_id = next(bank_id_iter)
-                    next_acct = random.sample(self.bank_to_accts[bank_id], 1)[0]
+                    next_acct = random_sample(self.bank_to_accts[bank_id], 1)[0]
                     if prev_acct is None:
                         main_acct = next_acct
                     else:
@@ -1056,7 +1063,7 @@ class TransactionGenerator:
 
             else:
                 main_acct, main_bank_id = add_main_acct()
-                sub_accts = random.sample(self.bank_to_accts[main_bank_id], num_accounts - 1)
+                sub_accts = random_sample(self.bank_to_accts[main_bank_id], num_accounts - 1)
                 for n in sub_accts:
                     self.remove_typology_candidate(n)
                     add_node(n, main_bank_id)
@@ -1078,7 +1085,7 @@ class TransactionGenerator:
                 while all_bank_ids:
                     num_accts_per_bank = remain_num // len(all_bank_ids)
                     bank_id = all_bank_ids.pop()
-                    new_members = random.sample(self.bank_to_accts[bank_id], num_accts_per_bank)
+                    new_members = random_sample(self.bank_to_accts[bank_id], num_accts_per_bank)
                     all_accts.extend(new_members)
 
                     remain_num -= len(new_members)
@@ -1088,7 +1095,7 @@ class TransactionGenerator:
                 main_acct = all_accts[0]
             else:
                 main_acct, main_bank_id = add_main_acct()
-                sub_accts = random.sample(self.bank_to_accts[main_bank_id], num_accounts - 1)
+                sub_accts = random_sample(self.bank_to_accts[main_bank_id], num_accounts - 1)
                 for n in sub_accts:
                     self.remove_typology_candidate(n)
                     add_node(n, main_bank_id)
@@ -1108,21 +1115,21 @@ class TransactionGenerator:
         elif typology_name == "scatter_gather":  # Scatter-Gather (fan-out -> fan-in)
             if is_external:
                 if len(self.get_all_bank_ids()) >= 3:
-                    [orig_bank_id, mid_bank_id, bene_bank_id] = random.sample(self.get_all_bank_ids(), 3)
+                    [orig_bank_id, mid_bank_id, bene_bank_id] = random_sample(self.get_all_bank_ids(), 3)
                 else:
-                    [orig_bank_id, mid_bank_id] = random.sample(self.get_all_bank_ids(), 2)
+                    [orig_bank_id, mid_bank_id] = random_sample(self.get_all_bank_ids(), 2)
                     bene_bank_id = orig_bank_id
             else:
-                orig_bank_id = mid_bank_id = bene_bank_id = random.sample(self.get_all_bank_ids(), 1)[0]
+                orig_bank_id = mid_bank_id = bene_bank_id = random_sample(self.get_all_bank_ids(), 1)[0]
 
-            main_acct = orig_acct = random.sample(self.bank_to_accts[orig_bank_id], 1)[0]
+            main_acct = orig_acct = random_sample(self.bank_to_accts[orig_bank_id], 1)[0]
             self.remove_typology_candidate(orig_acct)
             add_node(orig_acct, orig_bank_id)
-            mid_accts = random.sample(self.bank_to_accts[mid_bank_id], num_accounts - 2)
+            mid_accts = random_sample(self.bank_to_accts[mid_bank_id], num_accounts - 2)
             for n in mid_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, mid_bank_id)
-            bene_acct = random.sample(self.bank_to_accts[bene_bank_id], 1)[0]
+            bene_acct = random_sample(self.bank_to_accts[bene_bank_id], 1)[0]
             self.remove_typology_candidate(bene_acct)
             add_node(bene_acct, bene_bank_id)
 
@@ -1143,23 +1150,23 @@ class TransactionGenerator:
         elif typology_name == "gather_scatter":  # Gather-Scatter (fan-in -> fan-out)
             if is_external:
                 if len(self.get_all_bank_ids()) >= 3:
-                    [orig_bank_id, mid_bank_id, bene_bank_id] = random.sample(self.get_all_bank_ids(), 3)
+                    [orig_bank_id, mid_bank_id, bene_bank_id] = random_sample(self.get_all_bank_ids(), 3)
                 else:
-                    [orig_bank_id, mid_bank_id] = random.sample(self.get_all_bank_ids(), 2)
+                    [orig_bank_id, mid_bank_id] = random_sample(self.get_all_bank_ids(), 2)
                     bene_bank_id = orig_bank_id
             else:
-                orig_bank_id = mid_bank_id = bene_bank_id = random.sample(self.get_all_bank_ids(), 1)[0]
+                orig_bank_id = mid_bank_id = bene_bank_id = random_sample(self.get_all_bank_ids(), 1)[0]
 
             num_orig_accts = num_bene_accts = (num_accounts - 1) // 2
 
-            orig_accts = random.sample(self.bank_to_accts[orig_bank_id], num_orig_accts)
+            orig_accts = random_sample(self.bank_to_accts[orig_bank_id], num_orig_accts)
             for n in orig_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, orig_bank_id)
-            main_acct = mid_acct = random.sample(self.bank_to_accts[mid_bank_id], 1)[0]
+            main_acct = mid_acct = random_sample(self.bank_to_accts[mid_bank_id], 1)[0]
             self.remove_typology_candidate(mid_acct)
             add_node(mid_acct, mid_bank_id)
-            bene_accts = random.sample(self.bank_to_accts[bene_bank_id], num_bene_accts)
+            bene_accts = random_sample(self.bank_to_accts[bene_bank_id], num_bene_accts)
             for n in bene_accts:
                 self.remove_typology_candidate(n)
                 add_node(n, bene_bank_id)

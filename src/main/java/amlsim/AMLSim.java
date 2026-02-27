@@ -505,12 +505,14 @@ public class AMLSim extends SimState {
 		// Increase the balance of the beneficiary account
         String beneID = bene.getID();
         float beneBefore = (float)bene.getBalance();
-		bene.deposit(amt);
-		float beneAfter = (float)bene.getBalance();
+			bene.deposit(amt);
+			float beneAfter = (float)bene.getBalance();
 
-		txs.addTransaction(step, desc, amt, origID, beneID, origBefore, origAfter, beneBefore, beneAfter, isSAR, alertID);
-		diameter.addEdge(origID, beneID);
-	}
+			txs.addTransaction(step, desc, amt, origID, beneID, origBefore, origAfter, beneBefore, beneAfter, isSAR, alertID);
+			if(!(orig instanceof Branch) && !(bene instanceof Branch)){
+				diameter.addEdge(origID, beneID);
+			}
+		}
     
     /**
      * Write diameters of the transaction network snapshots to a CSV file
