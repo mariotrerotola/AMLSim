@@ -145,8 +145,14 @@ public class Account implements Steppable {
 		if (this.tx_types.containsKey(destID)) {
 			return tx_types.get(destID);
 		} else if (!this.tx_types.isEmpty()) {
-			List<String> values = new ArrayList<>(this.tx_types.values());
-			return values.get(this.random.nextInt(values.size()));
+			int target = this.random.nextInt(this.tx_types.size());
+			int idx = 0;
+			for(String value : this.tx_types.values()){
+				if(idx++ == target){
+					return value;
+				}
+			}
+			return this.tx_types.values().iterator().next();
 		} else {
 			return Account.all_tx_types.get(this.random.nextInt(Account.all_tx_types.size()));
 		}

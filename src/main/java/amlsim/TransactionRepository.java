@@ -1,10 +1,10 @@
 package amlsim;
 
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
+
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.*;
 
 /**
  * AML Transaction repository (set of transactions) for performance optimizations
@@ -31,12 +31,13 @@ public class TransactionRepository {
     private boolean[] isSAR;
     private long[] alertIDs;
 
-    private Map<Long, Integer> txCounter;
-    private Map<Long, Integer> sarTxCounter;
+    private Long2IntOpenHashMap txCounter;
+    private Long2IntOpenHashMap sarTxCounter;
+    private BufferedWriter logWriter;
 
     TransactionRepository(int size) {
-        this.txCounter = new HashMap<>();
-        this.sarTxCounter = new HashMap<>();
+        this.txCounter = new Long2IntOpenHashMap();
+        this.sarTxCounter = new Long2IntOpenHashMap();
 
         this.size = size;
         this.steps = new long[size];
@@ -55,6 +56,20 @@ public class TransactionRepository {
 
     void setLimit(int limit){
         this.limit = limit;
+    }
+
+    void initLogWriter(String logFileName) throws IOException {
+        closeLogWriter();
+        this.logWriter = new BufferedWriter(new FileWriter(logFileName));
+        this.logWriter.write("step,type,amount,nameOrig,oldbalanceOrig,newbalanceOrig,nameDest,oldbalanceDest,newbalanceDest,isSAR,alertID\n");
+        this.logWriter.flush();
+    }
+
+    void closeLogWriter() throws IOException {
+        if (this.logWriter != null) {
+            this.logWriter.close();
+            this.logWriter = null;
+        }
     }
 
     void addTransaction(long step, String desc, double amt, String origID, String destID, float origBefore,
@@ -81,9 +96,9 @@ public class TransactionRepository {
         this.alertIDs[index] = aid;
 
         if(isSAR){
-            sarTxCounter.put(step, sarTxCounter.getOrDefault(step, 0) + 1);
+            sarTxCounter.addTo(step, 1);
         }else if(!desc.contains("CASH-")) {
-            txCounter.put(step, txCounter.getOrDefault(step, 0) + 1);  // Exclude cash transactions for counter
+            txCounter.addTo(step, 1);  // Exclude cash transactions for counter
         }
 
         count++;
@@ -104,8 +119,8 @@ public class TransactionRepository {
             BufferedWriter writer = new BufferedWriter(new FileWriter(logFile));
             writer.write("step,normal,SAR\n");
             for(long i=0; i<steps; i++){
-                int numTx = txCounter.getOrDefault(i, 0);
-                int numSARTx = sarTxCounter.getOrDefault(i, 0);
+                int numTx = txCounter.get(i);
+                int numSARTx = sarTxCounter.get(i);
                 writer.write(i + "," + numTx + "," + numSARTx + "\n");
             }
             writer.flush();
@@ -115,19 +130,21 @@ public class TransactionRepository {
     }
 
     void flushLog(){
+        if(this.index == 0){
+            return;
+        }
+        if(this.logWriter == null){
+            throw new IllegalStateException("Transaction log writer is not initialized");
+        }
         // Flush transaction logs to the CSV file
         try {
-            FileWriter writer1 = new FileWriter(new File(AMLSim.getTxLogFileName()), true);
-            BufferedWriter writer = new BufferedWriter(writer1);
-
             for(int i = 0; i < this.index; i++){
-                writer.write(steps[i] + "," + descriptions[i] + "," + getDoublePrecision(amounts[i]) + "," +
+                logWriter.write(steps[i] + "," + descriptions[i] + "," + getDoublePrecision(amounts[i]) + "," +
                         origIDs[i] + "," + getDoublePrecision(origBefore[i]) + "," + getDoublePrecision(origAfter[i]) + "," +
                         destIDs[i] + "," + getDoublePrecision(destBefore[i]) + "," + getDoublePrecision(destAfter[i]) + "," +
                         (isSAR[i] ? "1" : "0") + "," + alertIDs[i] + "\n");
             }
-            writer.flush();
-            writer.close();
+            logWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }

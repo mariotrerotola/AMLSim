@@ -519,6 +519,7 @@ class LogConverter:
     def __init__(self, conf, sim_name=None, fake=None):
         self.reports = dict()  # SAR ID and transaction subgraph
         self.org_types = dict()  # ID, organization type
+        self._recorded_accounts = set()
 
         self.fake = fake
 
@@ -884,6 +885,10 @@ class LogConverter:
 
     
     def sar_accounts(self, reader):
+        self._recorded_accounts.clear()
+        for typology in self.reports.values():
+            typology.recorded_members.clear()
+
         header = next(reader)
         indices = {name: index for index, name in enumerate(header)}
         columns = len(header)
@@ -926,11 +931,13 @@ class LogConverter:
                     acct_id = orig_acct
                     cust_id = orig_name
                     typology.recorded_members.add(acct_id)
+                    self._recorded_accounts.add(acct_id)
                     sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step, self.schema._base_date), reason, self.org_type(acct_id), is_sar))
                 if (not self.account_recorded(dest_acct)):
                     acct_id = dest_acct
                     cust_id = dest_name
                     typology.recorded_members.add(acct_id)
+                    self._recorded_accounts.add(acct_id)
                     sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step, self.schema._base_date), reason, self.org_type(acct_id), is_sar))
                 
             count += 1
@@ -951,10 +958,7 @@ class LogConverter:
             writer.writerow(alert)
 
     def account_recorded(self, acct_id):
-        for sar_id, typology in self.reports.items():
-            if acct_id in typology.recorded_members:
-                return True
-        return False
+        return acct_id in self._recorded_accounts
 
 
 if __name__ == "__main__":

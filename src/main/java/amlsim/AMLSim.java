@@ -45,7 +45,7 @@ public class AMLSim extends SimState {
 	private ArrayList<String> paramFile = new ArrayList<>();
 	private ArrayList<String> actions = new ArrayList<>();
 	private ArrayList<Account> accounts = new ArrayList<Account>();
-	private BufferedWriter bufWriter;
+	private BufferedWriter diameterWriter = null;
 	private static long numOfSteps = 1;  // Number of simulation steps
 	private static int currentLoop = 0;  // Simulation iteration counter
 	private static String txLogFileName = "";
@@ -192,20 +192,19 @@ public class AMLSim extends SimState {
         this.diameterFile = simProp.getDiameterLogFile();
         this.computeDiameter = simProp.isComputeDiameter();
 
-        if(computeDiameter && diameterFile != null){
-            try{
-                BufferedWriter writer = new BufferedWriter(new FileWriter(diameterFile));
-                writer.close();
-            }catch (IOException e){
-                e.printStackTrace();
-                computeDiameter = false;
-            }
-            if(computeDiameter){
+	        if(computeDiameter && diameterFile != null){
+	            try{
+	                this.diameterWriter = new BufferedWriter(new FileWriter(diameterFile));
+	            }catch (IOException e){
+	                e.printStackTrace();
+	                computeDiameter = false;
+	            }
+	            if(computeDiameter){
                 logger.info("Compute transaction graph diameters and write them to: " + diameterFile);
             }else{
                 logger.info("Transaction graph diameter computation is disabled");
-            }
-        }
+	        }
+	}
 	}
 
 
@@ -410,12 +409,21 @@ public class AMLSim extends SimState {
 
 	private void initTxLogBufWriter(String logFileName) {
 		try {
-			FileWriter writer = new FileWriter(new File(logFileName));
-			this.bufWriter = new BufferedWriter(writer);
-			this.bufWriter.write("step,type,amount,nameOrig,oldbalanceOrig,newbalanceOrig,nameDest,oldbalanceDest,newbalanceDest,isSAR,alertID\n");
-			this.bufWriter.close();
+			txs.initLogWriter(logFileName);
 		} catch (IOException e) {
-			e.printStackTrace();
+			throw new IllegalStateException("Cannot initialize transaction log writer: " + logFileName, e);
+		}
+	}
+
+	private void closeDiameterWriter(){
+		if(this.diameterWriter != null){
+			try{
+				this.diameterWriter.close();
+			}catch (IOException e){
+				e.printStackTrace();
+			}finally {
+				this.diameterWriter = null;
+			}
 		}
 	}
 
@@ -444,24 +452,27 @@ public class AMLSim extends SimState {
 		System.out.println("Starting AMLSim Running for " + numOfSteps + " steps. Current loop:" + AMLSim.currentLoop);
 
 		long step;
-		while ((step = super.schedule.getSteps()) < numOfSteps) {
-			if (!super.schedule.step(this))
-				break;
-			if (step % 100 == 0 && step != 0) {
-				long tm = System.currentTimeMillis();
-				System.out.println("Time Step " + step + ", " + (tm - begin)/1000 + " [s]");
+			while ((step = super.schedule.getSteps()) < numOfSteps) {
+				if (!super.schedule.step(this))
+					break;
+				if (step % 100 == 0 && step != 0) {
+					long tm = System.currentTimeMillis();
+					System.out.println("Time Step " + step + ", " + (tm - begin)/1000 + " [s]");
+				}
+				if (computeDiameter && step % 10 == 0 && step > 0){
+					double[] result = diameter.computeDiameter();
+					writeDiameter(step, result);
+				}
 			}
-			else {
-				System.out.print("*");
+			txs.flushLog();
+			try{
+				txs.closeLogWriter();
+			}catch (IOException e){
+				e.printStackTrace();
 			}
-			if (computeDiameter && step % 10 == 0 && step > 0){
-				double[] result = diameter.computeDiameter();
-				writeDiameter(step, result);
-			}
-		}
-		txs.flushLog();
-		txs.writeCounterLog(numOfSteps, counterFile);
-		System.out.println(" - Finished running " + step + " steps ");
+			closeDiameterWriter();
+			txs.writeCounterLog(numOfSteps, counterFile);
+			System.out.println(" - Finished running " + step + " steps ");
 
 		//Finishing the simulation
 		super.finish();
@@ -508,9 +519,11 @@ public class AMLSim extends SimState {
      */
 	private void writeDiameter(long step, double[] result){
 		try{
-			BufferedWriter writer = new BufferedWriter(new FileWriter(diameterFile, true));
-			writer.write(step + "," + result[0] + "," + result[1] + "\n");
-			writer.close();
+			if(this.diameterWriter == null){
+				return;
+			}
+			this.diameterWriter.write(step + "," + result[0] + "," + result[1] + "\n");
+			this.diameterWriter.flush();
 		}catch (IOException e){
 			e.printStackTrace();
 		}
@@ -544,4 +557,3 @@ public class AMLSim extends SimState {
         sim.executeSimulation();
 	}
 }
-
