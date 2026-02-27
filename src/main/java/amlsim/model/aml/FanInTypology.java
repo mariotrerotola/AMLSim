@@ -20,9 +20,6 @@ public class FanInTypology extends AMLTypology {
     private List<Account> origList = new ArrayList<>();  // The origin (originator) accounts
 
     private long[] steps;
-    private static final int SIMULTANEOUS = 1;
-    private static final int FIXED_INTERVAL = 2;
-    private static final int RANDOM_RANGE = 3;
 
     private TargetedTransactionAmount transactionAmount;
 
@@ -38,12 +35,17 @@ public class FanInTypology extends AMLTypology {
         List<Account> members = alert.getMembers();
         Account mainAccount = alert.getMainAccount();
         bene = mainAccount != null ? mainAccount : members.get(0);  // The main account is the beneficiary
+        origList.clear();
         for(Account orig : members){  // The rest of accounts are originators
             if(orig != bene) origList.add(orig);
         }
 
         // Set transaction schedule
         int numOrigs = origList.size();
+        if(numOrigs == 0){
+            steps = new long[0];
+            return;
+        }
         int totalStep = (int)(endStep - startStep + 1);
         int defaultInterval = Math.max(totalStep / numOrigs, 1);
         this.startStep = generateStartStep(defaultInterval);  //  decentralize the first transaction step
@@ -65,7 +67,7 @@ public class FanInTypology extends AMLTypology {
                     steps[i] = startStep + i/batch;
                 }
             }
-        }else if(schedulingID == RANDOM_RANGE){
+        }else if(schedulingID == RANDOM_INTERVAL || schedulingID == UNORDERED){
             for(int i=0; i<numOrigs; i++){
                 steps[i] = getRandomStep();
             }

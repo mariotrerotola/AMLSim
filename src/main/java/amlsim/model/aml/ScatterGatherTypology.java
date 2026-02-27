@@ -30,6 +30,10 @@ public class ScatterGatherTypology extends AMLTypology {
         double margin = scatterAmount * marginRatio;
         gatherAmount = Math.max(scatterAmount - margin, minAmount);
 
+        intermediate.clear();
+        orig = null;
+        bene = null;
+
         orig = alert.getMainAccount();
         for (Account acct : alert.getMembers()) {
             if (acct == orig) {
@@ -43,6 +47,11 @@ public class ScatterGatherTypology extends AMLTypology {
         }
 
         int size = alert.getMembers().size() - 2;
+        if(size <= 0){
+            scatterSteps = new long[0];
+            gatherSteps = new long[0];
+            return;
+        }
         scatterSteps = new long[size];
         gatherSteps = new long[size];
 

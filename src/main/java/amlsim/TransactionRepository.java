@@ -84,7 +84,6 @@ public class TransactionRepository {
             sarTxCounter.put(step, sarTxCounter.getOrDefault(step, 0) + 1);
         }else if(!desc.contains("CASH-")) {
             txCounter.put(step, txCounter.getOrDefault(step, 0) + 1);  // Exclude cash transactions for counter
-            count--;
         }
 
         count++;

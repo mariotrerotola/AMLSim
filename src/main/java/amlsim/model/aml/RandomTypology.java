@@ -61,7 +61,7 @@ public class RandomTypology extends AMLTypology {
         Account bene = beneList.get(idx);
 
         TargetedTransactionAmount transactionAmount = new TargetedTransactionAmount(nextOrig.getBalance(), random);
-        makeTransaction(step, transactionAmount.doubleValue(), nextOrig, bene, isSAR, (int)alertID);  // Main account makes transactions to one of the neighbors
+        makeTransaction(step, transactionAmount.doubleValue(), nextOrig, bene, isSAR, alertID);  // Main account makes transactions to one of the neighbors
         nextOrig = bene;  // The next originator account is the previous beneficiary account
     }
 }

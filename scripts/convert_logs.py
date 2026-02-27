@@ -13,8 +13,10 @@ from faker import Faker
 import numpy as np
 
 
-def days_to_date(days):
-    date = datetime.datetime(2017, 1, 1) + datetime.timedelta(days=days)
+def days_to_date(days, base_date=None):
+    if base_date is None:
+        base_date = datetime.datetime(2017, 1, 1)
+    date = base_date + datetime.timedelta(days=days)
     return date.strftime("%Y%m%d")
 
 
@@ -924,12 +926,12 @@ class LogConverter:
                     acct_id = orig_acct
                     cust_id = orig_name
                     typology.recorded_members.add(acct_id)
-                    sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step), reason, self.org_type(acct_id), is_sar))
+                    sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step, self.schema._base_date), reason, self.org_type(acct_id), is_sar))
                 if (not self.account_recorded(dest_acct)):
                     acct_id = dest_acct
                     cust_id = dest_name
                     typology.recorded_members.add(acct_id)
-                    sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step), reason, self.org_type(acct_id), is_sar))
+                    sar_accounts.append((sar_id, acct_id, cust_id, days_to_date(step, self.schema._base_date), reason, self.org_type(acct_id), is_sar))
                 
             count += 1
             if count % 100 == 0:

@@ -29,6 +29,11 @@ public class GatherScatterTypology extends AMLTypology {
         middleStep = (startStep + endStep) / 2;
 //        System.out.println(startStep + " " + middleStep + " " + endStep);
 
+        origAccts.clear();
+        beneAccts.clear();
+        totalReceivedAmount = 0.0;
+        scatterAmount = 0.0;
+
         int numSubMembers = alert.getMembers().size() - 1;
         int numOrigMembers = numSubMembers / 2;
         int numBeneMembers = numSubMembers - numOrigMembers;
@@ -54,11 +59,15 @@ public class GatherScatterTypology extends AMLTypology {
         }
 
         // Ensure the specified period
-        gatherSteps[0] = startStep;
+        if(numOrigMembers > 0){
+            gatherSteps[0] = startStep;
+        }
         for(int i=1; i<numOrigMembers; i++){
             gatherSteps[i] = getRandomStepRange(startStep, middleStep);
         }
-        scatterSteps[0] = endStep;
+        if(numBeneMembers > 0){
+            scatterSteps[0] = endStep;
+        }
         for(int i=1; i<numBeneMembers; i++){
             scatterSteps[i] = getRandomStepRange(middleStep + 1, endStep);
         }
@@ -97,7 +106,7 @@ public class GatherScatterTypology extends AMLTypology {
                 }
             }
         }
-        if(step == middleStep){  // Define the amount of scatter transactions
+        if(step == middleStep && numScatters > 0){  // Define the amount of scatter transactions
             double margin = totalReceivedAmount * marginRatio;
             scatterAmount = (totalReceivedAmount - margin) / numScatters;
         }
@@ -108,4 +117,3 @@ public class GatherScatterTypology extends AMLTypology {
         return "GatherScatterTypology";
     }
 }
-

@@ -24,7 +24,8 @@ public class CashOutModel extends CashModel {
     }
 
     private boolean isNextStep(long step){
-        return false;
+        int interval = this.account.isSAR() ? SUSPICIOUS_INTERVAL : NORMAL_INTERVAL;
+        return interval > 0 && step % interval == 0;
     }
 
     private float computeAmount(){

@@ -158,7 +158,11 @@ public abstract class AMLTypology extends AbstractTransactionModel {
      * @return Random simulation step within startStep and endStep
      */
     long getRandomStep(){
-        return alert.getSimulator().random.nextLong(getStepRange()) + startStep;
+        int range = getStepRange();
+        if(range <= 0){
+            return startStep;
+        }
+        return alert.getSimulator().random.nextLong(range) + startStep;
     }
 
     /**
@@ -173,7 +177,10 @@ public abstract class AMLTypology extends AbstractTransactionModel {
         }else if(end < start){
             throw new IllegalArgumentException("The start and end steps are unordered");
         }
-        long range = end - start;
+        long range = end - start + 1;
+        if(range <= 0){
+            return start;
+        }
         return alert.getSimulator().random.nextLong(range) + start;
     }
 

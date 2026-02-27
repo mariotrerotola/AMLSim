@@ -32,6 +32,10 @@ public class CycleTypology extends AMLTypology {
         
         List<Account> members = alert.getMembers();  // All members
         int length = members.size();  // Number of members (total transactions)
+        if(length == 0){
+            steps = new long[0];
+            return;
+        }
         steps = new long[length];
 
         int allStep = (int)AMLSim.getNumOfSteps();
@@ -41,6 +45,10 @@ public class CycleTypology extends AMLTypology {
 
         if(modelID == FIXED_INTERVAL){  // Ordered, same interval
             period = (int)(endStep - startStep);
+            if(period <= 0){
+                Arrays.fill(steps, startStep);
+                return;
+            }
             if(length < period){
                 this.interval = period / length; // If there is enough number of available steps, make transaction with interval
                 for(int i=0; i<length-1; i++){
@@ -59,7 +67,9 @@ public class CycleTypology extends AMLTypology {
             this.interval = 1;
             // Ensure the specified period
             steps[0] = startStep;
-            steps[1] = endStep;
+            if(length > 1){
+                steps[1] = endStep;
+            }
             for(int i=2; i<length; i++){
                 steps[i] = getRandomStep();
             }
