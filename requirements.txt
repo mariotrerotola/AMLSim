@@ -5,3 +5,11 @@ pygraphviz
 powerlaw>=2.0.0
 python-dateutil>=2.9.0
 Faker>=40.5.1
+pandas>=2.2.0
+scikit-learn>=1.5.0
+scipy>=1.14.0
+imbalanced-learn>=0.12.0
+xgboost>=2.0.0
+lightgbm>=4.0.0
+optuna>=3.0.0
+joblib>=1.4.0
